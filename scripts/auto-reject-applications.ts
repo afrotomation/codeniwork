@@ -1,15 +1,13 @@
-import { neon } from '@neondatabase/serverless'
 import { config } from 'dotenv'
 import { and,eq,sql } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/neon-http'
+import { drizzle } from 'drizzle-orm/node-postgres'
 import { applicationEvents,companies,jobApplications } from '../lib/db/schema'
 
 // Load environment variables
 config( { path: '.env.local' } )
 
 // Database connection
-const sqlConnection=neon( process.env.DATABASE_URL! )
-const db=drizzle( sqlConnection )
+const db=drizzle( process.env.DATABASE_URL! )
 
 async function autoRejectOldApplications () {
 	const twentyOneDaysAgo=new Date()

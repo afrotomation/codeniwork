@@ -1,10 +1,8 @@
-import { neon } from '@neondatabase/serverless'
-import { drizzle } from 'drizzle-orm/neon-http'
+import { drizzle } from 'drizzle-orm/node-postgres'
 import { accounts,applicationEvents,companies,jobApplications,sessions,users,verificationTokens } from '../lib/db/schema'
 
 // Database connection
-const sql=neon( process.env.DATABASE_URL! )
-const db=drizzle( sql )
+const db=drizzle( process.env.DATABASE_URL! )
 
 async function clearDatabase () {
 	console.log( '🧹 Starting database cleanup...' )
