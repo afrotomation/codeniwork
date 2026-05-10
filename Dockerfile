@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 ARG BUN_VERSION=1-alpine
 
-FROM public.ecr.aws/docker/library/node:22-alpine AS builder
+FROM mirror.gcr.io/library/node:22-alpine AS builder
 # bun replaces oven/bun:* builder image. Pulling node from public.ecr.aws
 # (no rate limit) and installing bun keeps build reproducible without
 # touching docker.io.
@@ -16,7 +16,7 @@ RUN bun install --frozen-lockfile
 RUN bun run build
 RUN mkdir -p /app/public
 
-FROM public.ecr.aws/docker/library/node:22-alpine AS runner
+FROM mirror.gcr.io/library/node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
