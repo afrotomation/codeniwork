@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.24
 ARG BUN_VERSION=1-alpine
 
 FROM mirror.gcr.io/library/node:22-alpine AS builder
