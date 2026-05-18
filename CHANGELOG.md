@@ -1,3 +1,11 @@
+## [1.8.1](https://git.afrotomation.com/afrotomation/codeniwork/compare/v1.8.0...v1.8.1) (2026-05-18)
+
+### Bug Fixes
+
+* **docker:** add migrate-Job support to runner stage ([49d0d0b](https://git.afrotomation.com/afrotomation/codeniwork/commit/49d0d0b784a2367d1bfd91926f25e56003d7b033)), closes [#37](https://git.afrotomation.com/afrotomation/codeniwork/issues/37)
+* **docker:** migrate base images from public.ecr.aws to mirror.gcr.io ([b67e788](https://git.afrotomation.com/afrotomation/codeniwork/commit/b67e7886dfc139236e19ed59ca1c84cc07d7f097))
+* **docker:** Switch base images to public.ecr.aws (no Docker Hub rate limit) ([4c0e986](https://git.afrotomation.com/afrotomation/codeniwork/commit/4c0e9863e8f251046ae340bb9c480f89ef93fba3))
+
 ## [1.8.0](https://github.com/codenificient/codeniwork/compare/v1.7.0...v1.8.0) (2026-04-25)
 
 ### Features
