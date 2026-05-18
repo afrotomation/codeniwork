@@ -27,7 +27,28 @@
 #      ArgoCD image-updater on afrotomation-infra picks up the digest and
 #      rolls the matching Deployment.
 
-stages: [build]
+stages: [release, build]
+
+release:
+  stage: release
+  image: node:24-alpine
+  variables:
+    GIT_DEPTH: 0
+  before_script:
+    - apk add --no-cache git
+    - npm install -g semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/gitlab @semantic-release/npm conventional-changelog-conventionalcommits
+  script:
+    - |
+      if [ -z "$GITLAB_TOKEN" ]; then
+        echo "GITLAB_TOKEN is not set — skipping release."
+        exit 0
+      fi
+      semantic-release
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_TITLE !~ /^chore\(release\):/
+  tags:
+    - k3s
+    - docker
 
 build-image:
   stage: build

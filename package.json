@@ -15,7 +15,8 @@
     "db:seed": "tsx scripts/seed-database.ts",
     "db:reset": "pnpm db:clear && pnpm db:seed",
     "auto-reject": "tsx scripts/auto-reject-applications.ts",
-    "semantic-release": "semantic-release"
+    "semantic-release": "semantic-release",
+    "release": "semantic-release"
   },
   "dependencies": {
     "@codenificient/analytics-sdk": "^1.1.0",
@@ -54,13 +55,14 @@
     "@next/eslint-plugin-next": "^16.1.6",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
-    "@semantic-release/npm": "^13.1.4",
+    "@semantic-release/gitlab": "^13.3.2",
+    "@semantic-release/npm": "^13.1.5",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^22.18.0",
     "@types/pg": "^8.20.0",
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19.2.3",
-    "conventional-changelog-conventionalcommits": "^9.1.0",
+    "conventional-changelog-conventionalcommits": "^9.3.1",
     "drizzle-kit": "^0.31.8",
     "eslint": "^10.0.0",
     "postcss": "^8.5.6",
