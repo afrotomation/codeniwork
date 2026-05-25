@@ -8,10 +8,14 @@ FROM mirror.gcr.io/library/node:22-alpine AS builder
 RUN npm install -g bun@1.2.17
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
-COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Install layer: invalidated only when lockfile changes
+COPY package.json ./
+COPY bun.lock* package-lock.json* ./
 RUN bun install --frozen-lockfile
+
+COPY . .
 
 RUN bun run build
 RUN mkdir -p /app/public
