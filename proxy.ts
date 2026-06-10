@@ -9,10 +9,11 @@ export function proxy( request: NextRequest ) {
 	const publicPaths=[ '/','/auth/signin','/auth/signup' ]
 	const isPublicPath=publicPaths.some( publicPath => path.startsWith( publicPath ) )
 
-	// Check if user is authenticated (has NextAuth.js session cookie)
-	const hasSession=request.cookies.has( 'next-auth.session-token' )||
-		request.cookies.has( '__Secure-next-auth.session-token' )||
-		request.cookies.has( '__Host-next-auth.csrf-token' )
+	// Check if user is authenticated (has a Better Auth session cookie set
+	// by the CodeniServer proxy). Presence-only: real validation happens in
+	// auth() on every server call.
+	const hasSession=request.cookies.has( 'better-auth.session_token' )||
+		request.cookies.has( '__Secure-better-auth.session_token' )
 
 	// If the path is public, allow access
 	if ( isPublicPath ) {

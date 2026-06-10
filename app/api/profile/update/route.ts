@@ -1,7 +1,6 @@
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { users } from '@/lib/db/schema'
-import bcrypt from 'bcrypt'
 import { eq } from 'drizzle-orm'
 import { NextRequest,NextResponse } from 'next/server'
 import { z } from 'zod/v4'
@@ -10,8 +9,6 @@ import { z } from 'zod/v4'
 const updateProfileSchema=z.object( {
 	name: z.string().min( 1,'Name is required' ).max( 100,'Name too long' ),
 	image: z.string().url( 'Invalid image URL' ).optional(),
-	currentPassword: z.string().optional(),
-	newPassword: z.string().min( 6,'Password must be at least 6 characters' ).optional(),
 } )
 
 export async function PUT ( request: NextRequest ) {
@@ -52,31 +49,8 @@ export async function PUT ( request: NextRequest ) {
 		}
 
 		// Handle password update if provided
-		if ( validatedData.newPassword&&validatedData.currentPassword ) {
-			// Verify current password
-			if ( !user.passwordHash ) {
-				return NextResponse.json(
-					{ error: 'Password change not allowed for this account type' },
-					{ status: 400 }
-				)
-			}
-
-			const isCurrentPasswordValid=await bcrypt.compare(
-				validatedData.currentPassword,
-				user.passwordHash
-			)
-
-			if ( !isCurrentPasswordValid ) {
-				return NextResponse.json(
-					{ error: 'Current password is incorrect' },
-					{ status: 400 }
-				)
-			}
-
-			// Hash new password
-			const newPasswordHash=await bcrypt.hash( validatedData.newPassword,12 )
-			updateData.passwordHash=newPasswordHash
-		}
+		// Password changes are handled by CodeniServer through the auth
+		// proxy — this route only manages local profile fields.
 
 		// Update the user
 		const [ updatedUser ]=await db

@@ -1,7 +1,7 @@
 'use client'
 
 // Database queries moved to API routes
-import { useSession } from 'next-auth/react'
+import { useSession } from '@/lib/auth/client'
 import { useEffect,useState } from 'react'
 
 interface ActivityEvent {

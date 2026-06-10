@@ -1,5 +1,4 @@
 import { AnalyticsProvider } from '@/components/analytics-provider'
-import { AuthProvider } from '@/components/providers/auth-provider'
 import { Toaster } from '@/components/ui/toaster'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
@@ -37,12 +36,10 @@ export default function RootLayout ( {
         <script defer src="/a/script.js" data-host-url="/a" data-website-id="fa178569-fd4b-4502-b97f-232884172e42"></script>
       </head>
 			<body className={`${inter.className} h-full`} suppressHydrationWarning={true}>
-				<AuthProvider>
 					<AnalyticsProvider>
 						{children}
 					</AnalyticsProvider>
 					<Toaster />
-				</AuthProvider>
 			</body>
 		</html>
 	)

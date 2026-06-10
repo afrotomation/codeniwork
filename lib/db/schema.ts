@@ -20,6 +20,8 @@ export const priorityEnum=pgEnum( 'priority',[
 // Users table
 export const users=pgTable( 'users',{
 	id: uuid( 'id' ).primaryKey().defaultRandom(),
+	// CodeniServer SSO user id (sub). Local uuid stays the FK anchor.
+	externalId: text( 'external_id' ).unique(),
 	email: text( 'email' ).notNull().unique(),
 	name: text( 'name' ),
 	image: text( 'image' ),

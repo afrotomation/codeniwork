@@ -4,19 +4,15 @@ import { Button } from '@/components/ui/button'
 import { Card,CardContent,CardDescription,CardHeader,CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { usePasskeyAuth } from '@/hooks/use-passkey-auth'
-import { ArrowLeft,Fingerprint,Lock,Mail } from 'lucide-react'
-import { signIn } from 'next-auth/react'
+import { ArrowLeft,Lock,Mail } from 'lucide-react'
+import { authClient } from '@/lib/auth/client'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useEffect,useState } from 'react'
 
 export default function SignInPage () {
-	const router=useRouter()
 	const [ isLoading,setIsLoading ]=useState( false )
 	const [ error,setError ]=useState<string|null>( null )
 	const [ successMessage,setSuccessMessage ]=useState<string|null>( null )
-	const { isSupported,authenticateWithPasskey }=usePasskeyAuth()
 
 	const callbackUrl='/dashboard'
 
@@ -49,47 +45,23 @@ export default function SignInPage () {
 		setError( null )
 
 		try {
-			const result=await signIn( 'credentials',{
+			// Credentials are validated by CodeniServer via the local /api/auth
+			// proxy — the session cookie lands first-party on this domain.
+			const { error: signInError }=await authClient.signIn.email( {
 				email: formData.email,
 				password: formData.password,
-				redirect: false,
 			} )
 
-			if ( result?.error ) {
-				setError( 'Invalid email or password. Please try again.' )
+			if ( signInError ) {
+				setError( signInError.status===403
+					? 'Please verify your email first — check your inbox.'
+					: 'Invalid email or password. Please try again.' )
 				setIsLoading( false )
 			} else {
-				router.push( callbackUrl )
+				window.location.href=callbackUrl
 			}
 		} catch ( error ) {
 			setError( 'An unexpected error occurred. Please try again.' )
-			setIsLoading( false )
-		}
-	}
-
-	const handlePasskeySignIn=async () => {
-		setIsLoading( true )
-		setError( null )
-
-		try {
-			const result=await authenticateWithPasskey()
-			if ( result.verified&&result.user ) {
-				const signInResult=await signIn( 'credentials',{
-					email: result.user.email,
-					password: 'passkey-auth',
-					redirect: false,
-				} )
-
-				if ( signInResult?.error ) {
-					setError( 'Authentication failed. Please try again.' )
-					setIsLoading( false )
-				} else {
-					router.push( callbackUrl )
-				}
-			}
-		} catch ( error ) {
-			console.error( 'Passkey authentication error:',error )
-			setError( 'Passkey authentication failed. Please try email and password.' )
 			setIsLoading( false )
 		}
 	}
@@ -132,30 +104,6 @@ export default function SignInPage () {
 								</div>
 								<div className="ml-3">
 									<p className="text-sm text-red-300">{error}</p>
-								</div>
-							</div>
-						</div>
-					)}
-
-					{/* Passkey Sign In */}
-					{isSupported&&(
-						<div className="space-y-4">
-							<Button
-								onClick={handlePasskeySignIn}
-								disabled={isLoading}
-								variant="success"
-								className="w-full h-12 text-lg font-medium"
-							>
-								<Fingerprint className="w-5 h-5 mr-2" />
-								{isLoading? 'Authenticating...':'Sign In with Passkey'}
-							</Button>
-
-							<div className="relative">
-								<div className="absolute inset-0 flex items-center">
-									<span className="w-full border-t border-white/[0.08]" />
-								</div>
-								<div className="relative flex justify-center text-xs uppercase">
-									<span className="bg-base-50 px-2 text-violet-200/40">Or continue with</span>
 								</div>
 							</div>
 						</div>

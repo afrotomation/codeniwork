@@ -10,7 +10,7 @@ import {
 	TrendingUp,
 	XCircle
 } from 'lucide-react'
-import { useSession } from 'next-auth/react'
+import { useSession } from '@/lib/auth/client'
 import { useEffect, useState } from 'react'
 // Database queries moved to API routes
 

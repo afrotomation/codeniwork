@@ -1,5 +1,5 @@
 import { auth } from '@/lib/auth'
-import { verifyMasterPassword } from '@/lib/passkey-auth'
+import { verifyMasterPassword } from '@/lib/master-password'
 import { NextRequest,NextResponse } from 'next/server'
 
 export async function POST ( request: NextRequest ) {

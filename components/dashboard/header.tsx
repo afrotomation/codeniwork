@@ -4,13 +4,13 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Bell,LogOut,Menu,Search,Settings,User,X } from 'lucide-react'
-import { signOut,useSession } from 'next-auth/react'
+import { signOut,useSession } from '@/lib/auth/client'
 import { useRouter } from 'next/navigation'
 import { useEffect,useRef,useState } from 'react'
 
 export function DashboardHeader () {
-	const { data: session,status }=useSession()
-	const isLoading=status==="loading"
+	const { data: session,isPending }=useSession()
+	const isLoading=isPending
 	const [ isMenuOpen,setIsMenuOpen ]=useState( false )
 	const [ searchQuery,setSearchQuery ]=useState( '' )
 	const router=useRouter()
@@ -38,7 +38,8 @@ export function DashboardHeader () {
 
 	const handleSignOut=async () => {
 		try {
-			await signOut( { callbackUrl: '/' } )
+			await signOut()
+			window.location.href='/'
 		} catch ( error ) {
 			console.error( 'Error signing out:',error )
 		}

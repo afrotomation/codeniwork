@@ -18,7 +18,7 @@ import {
 	Trash2,
 	XCircle
 } from 'lucide-react'
-import { useSession } from 'next-auth/react'
+import { useSession } from '@/lib/auth/client'
 import { useEffect,useState } from 'react'
 
 interface JobApplication {

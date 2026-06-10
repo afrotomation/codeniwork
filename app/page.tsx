@@ -3,14 +3,14 @@
 import { Button } from '@/components/ui/button'
 import { Card,CardDescription,CardHeader,CardTitle } from '@/components/ui/card'
 import { ArrowRight,Briefcase,Building2,Calendar,CheckCircle,LogOut,Users,Zap } from 'lucide-react'
-import { signOut,useSession } from 'next-auth/react'
+import { signOut,useSession } from '@/lib/auth/client'
 import { useRouter } from 'next/navigation'
 
 export default function HomePage () {
-	const { data: session,status }=useSession()
+	const { data: session,isPending }=useSession()
 	const router=useRouter()
-	const hasSession=status==="authenticated"&&!!session
-	const isLoading=status==="loading"
+	const hasSession=!isPending&&!!session
+	const isLoading=isPending
 
 	const handleGetStarted=() => {
 		if ( hasSession ) {
@@ -30,7 +30,7 @@ export default function HomePage () {
 
 	const handleSignOut=async () => {
 		try {
-			await signOut( { callbackUrl: '/' } )
+			await signOut().then( () => { window.location.href='/' } )
 		} catch ( error ) {
 			console.error( 'Error signing out:',error )
 		}

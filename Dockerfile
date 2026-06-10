@@ -5,7 +5,7 @@ FROM mirror.gcr.io/library/node:22-alpine AS builder
 # bun replaces oven/bun:* builder image. Pulling node from public.ecr.aws
 # (no rate limit) and installing bun keeps build reproducible without
 # touching docker.io.
-RUN npm install -g bun@1.2.17
+RUN npm install -g bun@1.2.23
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -29,7 +29,7 @@ ENV NODE_ENV=production \
 
 RUN apk add --no-cache libc6-compat openssl wget
 # bun is required by the ArgoCD PreSync migrate Job to run scripts/migrate.ts.
-RUN npm install -g bun@1.2.17
+RUN npm install -g bun@1.2.23
 RUN addgroup -g 1001 -S nodejs && adduser -u 1001 -S nextjs -G nodejs
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

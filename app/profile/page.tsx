@@ -6,12 +6,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { Camera,Image as ImageIcon,Lock,Save,User } from 'lucide-react'
-import { useSession } from 'next-auth/react'
+import { authClient,useSession } from '@/lib/auth/client'
 import { useRouter } from 'next/navigation'
 import { useRef,useState } from 'react'
 
 export default function ProfilePage () {
-	const { data: session,update }=useSession()
+	const { data: session }=useSession()
 	const router=useRouter()
 	const { toast }=useToast()
 	const fileInputRef=useRef<HTMLInputElement>( null )
@@ -156,9 +156,16 @@ export default function ProfilePage () {
 				updateData.image=imageUrl
 			}
 
+			// Password changes go to CodeniServer (the identity provider) via
+			// the auth proxy — the local profile API only handles name/image.
 			if ( formData.newPassword&&formData.currentPassword ) {
-				updateData.currentPassword=formData.currentPassword
-				updateData.newPassword=formData.newPassword
+				const { error: pwError }=await authClient.changePassword( {
+					currentPassword: formData.currentPassword,
+					newPassword: formData.newPassword,
+				} )
+				if ( pwError ) {
+					throw new Error( pwError.message||'Failed to change password' )
+				}
 			}
 
 			// Update profile via API
@@ -177,15 +184,8 @@ export default function ProfilePage () {
 
 			const updatedUser=await response.json()
 
-			// Update session
-			await update( {
-				...session,
-				user: {
-					...session.user,
-					name: updatedUser.name,
-					image: updatedUser.image,
-				},
-			} )
+			// Better Auth refreshes its session cache on navigation; the local
+			// mirror re-syncs server-side on the next request.
 
 			toast( {
 				title: 'Profile updated successfully!',
