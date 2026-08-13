@@ -1,298 +1,355 @@
 'use client'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card,CardContent } from '@/components/ui/card'
-import { EditApplicationDialog } from './edit-application-dialog'
-// Database queries moved to API routes
+import { ApplicationDetail } from '@/components/dashboard/application-detail'
+import { EditApplicationDialog } from '@/components/dashboard/edit-application-dialog'
 import {
-	AlertCircle,
-	Building2,
-	Calendar,
-	CheckCircle,
-	Clock,
-	Edit,
-	ExternalLink,
-	MapPin,
-	Star,
-	Trash2,
-	XCircle
-} from 'lucide-react'
-import { useSession } from 'next-auth/react'
-import { useEffect,useState } from 'react'
+	formatShortDate,
+	getNextStep,
+	getPipelineStats,
+	isOpen,
+	type JobApplication,
+} from '@/lib/applications'
+import { cn } from '@/lib/utils'
+import { useRouter,useSearchParams } from 'next/navigation'
+import { useEffect,useMemo,useRef,useState } from 'react'
 
-interface JobApplication {
-	id: string
-	position: string
-	status: string
-	priority: string|null
-	salary: string|null
-	location: string|null
-	jobUrl: string|null
-	notes: string|null
-	appliedAt: Date|string
-	deadline: Date|string|null
-	isRemote: boolean|null
-	company: {
-		id: string
-		name: string
-		logo: string|null
-		website: string|null
+/** Design column rhythm: role, stage, priority, comp, applied, deadline. */
+const COLUMNS='grid-cols-[1fr_108px_84px_116px_92px_96px]'
+
+const LIVE_STAGES=[ 'interview','offer' ]
+
+interface JobApplicationsListProps {
+	applications: JobApplication[]
+	isLoading?: boolean
+	onRefresh?: () => Promise<void>
+}
+
+/* ── Query language ────────────────────────────────────────────
+   The filter bar is a command line, not a form. `stage:` narrows,
+   `remote:` narrows, `sort:` reorders, anything else is free text
+   matched against role and company. */
+
+interface ParsedQuery {
+	stage: string|null
+	remoteOnly: boolean
+	sort: 'next-step'|'applied'|'comp'
+	text: string
+}
+
+function parseQuery ( raw: string ): ParsedQuery {
+	const parsed: ParsedQuery={ stage: null,remoteOnly: false,sort: 'next-step',text: '' }
+	const words: string[]=[]
+
+	for ( const token of raw.trim().split( /\s+/ ).filter( Boolean ) ) {
+		const [ key,...rest ]=token.split( ':' )
+		const value=rest.join( ':' )
+
+		if ( key==='stage'&&value ) parsed.stage=value.toLowerCase()
+		else if ( key==='remote' ) parsed.remoteOnly=value!=='false'
+		else if ( key==='sort'&&value ) {
+			if ( value==='applied'||value==='comp'||value==='next-step' ) parsed.sort=value
+		} else words.push( token )
 	}
+
+	parsed.text=words.join( ' ' ).toLowerCase()
+	return parsed
 }
 
-const statusConfig={
-	applied: { label: 'Applied',color: 'bg-blue-500 text-white',icon: Clock },
-	screening: { label: 'Screening',color: 'bg-yellow-500 text-white',icon: AlertCircle },
-	interview: { label: 'Interview',color: 'bg-purple-500 text-white',icon: Calendar },
-	offer: { label: 'Offer',color: 'bg-green-500 text-white',icon: CheckCircle },
-	rejected: { label: 'Rejected',color: 'bg-red-500 text-white',icon: XCircle },
-	withdrawn: { label: 'Withdrawn',color: 'bg-gray-500 text-white',icon: XCircle }
+function matchesStage ( app: JobApplication,stage: string|null ): boolean {
+	if ( !stage||stage==='all' ) return true
+	if ( stage==='open' ) return isOpen( app )
+	if ( stage==='closed' ) return !isOpen( app )
+	return app.status===stage
 }
 
-const priorityConfig={
-	low: { label: 'Low',color: 'bg-gray-500 text-white' },
-	medium: { label: 'Medium',color: 'bg-orange-500 text-white' },
-	high: { label: 'High',color: 'bg-red-500 text-white' }
-}
+export function JobApplicationsList ( {
+	applications,
+	isLoading,
+	onRefresh,
+}: JobApplicationsListProps ) {
+	const router=useRouter()
+	const searchParams=useSearchParams()
+	const requestedId=searchParams.get( 'open' )
 
-export function JobApplicationsList () {
-	const { data: session }=useSession()
-	const [ applications,setApplications ]=useState<JobApplication[]>( [] )
-	const [ isLoading,setIsLoading ]=useState( true )
-	const [ editingApplication,setEditingApplication ]=useState<JobApplication|null>( null )
-	const [ isEditDialogOpen,setIsEditDialogOpen ]=useState( false )
+	const [ query,setQuery ]=useState( 'stage:open sort:next-step' )
+	const [ expandedId,setExpandedId ]=useState<string|null>( null )
+	const [ editing,setEditing ]=useState<JobApplication|null>( null )
+	const inputRef=useRef<HTMLInputElement>( null )
+
+	// A row handed over from the pipeline table opens straight away.
+	useEffect( () => {
+		if ( !requestedId ) return
+		setExpandedId( requestedId )
+		setQuery( '' )
+	},[ requestedId ] )
 
 	useEffect( () => {
-		if ( !session?.user?.id ) return
+		const onKeyDown=( event: KeyboardEvent ) => {
+			if ( event.metaKey||event.ctrlKey||event.altKey ) return
 
-		fetchApplications().finally( () => {
-			setIsLoading( false )
-		} )
-	},[ session?.user?.id ] )
+			const target=event.target as HTMLElement|null
+			const inField=Boolean( target?.isContentEditable )
+				||Boolean( target&&/^(INPUT|TEXTAREA|SELECT)$/.test( target.tagName ) )
 
-	const formatDate=( date: Date|string ) => {
-		// Convert string to Date if needed
-		const dateObj=typeof date==='string'? new Date( date ):date
+			if ( event.key==='Escape'&&inField ) {
+				inputRef.current?.blur()
+				return
+			}
+			if ( inField ) return
 
-		// Check if date is valid
-		if ( isNaN( dateObj.getTime() ) ) {
-			return 'Invalid date'
-		}
-
-		return dateObj.toLocaleDateString( 'en-US',{
-			month: 'short',
-			day: 'numeric',
-			year: 'numeric'
-		} )
-	}
-
-	const handleEditApplication=( application: JobApplication ) => {
-		setEditingApplication( application )
-		setIsEditDialogOpen( true )
-	}
-
-	const handleApplicationUpdated=async () => {
-		// Refresh the applications list with loading state
-		if ( session?.user?.id ) {
-			try {
-				// Set a brief loading state for better UX
-				setIsLoading( true )
-
-				// Add a small delay to show the loading state
-				await new Promise( resolve => setTimeout( resolve,500 ) )
-
-				await fetchApplications()
-
-				// Show success feedback
-				console.log( 'Applications list refreshed successfully' )
-			} catch ( error ) {
-				console.error( 'Error refreshing applications:',error )
-				// Optionally show error toast here if needed
-			} finally {
-				setIsLoading( false )
+			if ( event.key==='/' ) {
+				event.preventDefault()
+				inputRef.current?.focus()
+			} else if ( event.key==='e'||event.key==='E' ) {
+				const app=applications.find( item => item.id===expandedId )
+				if ( !app ) return
+				event.preventDefault()
+				setEditing( app )
 			}
 		}
+
+		window.addEventListener( 'keydown',onKeyDown )
+		return () => window.removeEventListener( 'keydown',onKeyDown )
+	},[ applications,expandedId ] )
+
+	const stats=getPipelineStats( applications )
+	const parsed=useMemo( () => parseQuery( query ),[ query ] )
+
+	const results=useMemo( () => {
+		const filtered=applications.filter( app => {
+			if ( !matchesStage( app,parsed.stage ) ) return false
+			if ( parsed.remoteOnly&&!app.isRemote ) return false
+			if ( parsed.text ) {
+				const haystack=`${app.position} ${app.company.name} ${app.location??''}`.toLowerCase()
+				if ( !haystack.includes( parsed.text ) ) return false
+			}
+			return true
+		} )
+
+		return filtered.sort( ( a,b ) => {
+			if ( parsed.sort==='applied' ) {
+				return new Date( b.appliedAt ).getTime()-new Date( a.appliedAt ).getTime()
+			}
+			if ( parsed.sort==='comp' ) {
+				return ( b.salary??'' ).localeCompare( a.salary??'' )
+			}
+			const aDays=getNextStep( a ).days
+			const bDays=getNextStep( b ).days
+			if ( aDays===null ) return bDays===null? 0:1
+			if ( bDays===null ) return -1
+			return aDays-bDays
+		} )
+	},[ applications,parsed ] )
+
+	const chips: { label: string; query: string; active: boolean }[]=[
+		{ label: `open ${stats.open}`,query: 'stage:open sort:next-step',active: parsed.stage==='open'&&!parsed.remoteOnly },
+		{ label: `applied ${stats.applied}`,query: 'stage:applied',active: parsed.stage==='applied' },
+		{ label: `screening ${stats.screening}`,query: 'stage:screening',active: parsed.stage==='screening' },
+		{ label: `interview ${stats.interview}`,query: 'stage:interview',active: parsed.stage==='interview' },
+		{ label: `offer ${stats.offer}`,query: 'stage:offer',active: parsed.stage==='offer' },
+		{ label: `closed ${stats.closed}`,query: 'stage:closed',active: parsed.stage==='closed' },
+		{ label: 'remote only',query: 'stage:open remote:true',active: parsed.remoteOnly },
+	]
+
+	const toggleRow = ( id: string ) => {
+		setExpandedId( current => ( current===id? null:id ) )
+		// The deep link has been consumed; keep the URL honest.
+		if ( requestedId ) router.replace( '/dashboard/applications' )
 	}
 
-	const fetchApplications=async () => {
+	const changeStatus=async ( app: JobApplication,status: 'offer'|'rejected'|'withdrawn' ) => {
+		// The update endpoint validates the whole record, so resend it intact.
+		if ( !app.location ) {
+			setEditing( app )
+			return
+		}
+
 		try {
-			const response=await fetch( '/api/dashboard/applications' )
-			if ( !response.ok ) {
-				throw new Error( 'Failed to fetch applications' )
-			}
-			const apps=await response.json()
-			setApplications( apps )
+			const response=await fetch( `/api/dashboard/applications/${app.id}`,{
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify( {
+					companyName: app.company.name,
+					position: app.position,
+					jobUrl: app.jobUrl??'',
+					location: app.location,
+					salary: app.salary??undefined,
+					notes: app.notes??undefined,
+					priority: ( app.priority??'medium' ) as 'low'|'medium'|'high',
+					isRemote: Boolean( app.isRemote ),
+					status,
+					deadline: app.deadline? new Date( app.deadline ).toISOString():undefined,
+				} ),
+			} )
+			if ( !response.ok ) throw new Error( 'Failed to update application' )
+			await onRefresh?.()
 		} catch ( error ) {
-			console.error( 'Error fetching job applications:',error )
+			console.error( 'Error updating application status:',error )
 		}
 	}
 
 	if ( isLoading ) {
 		return (
-			<div className="space-y-4">
-				{Array.from( { length: 3 } ).map( ( _,i ) => (
-					<Card key={i} className="glass">
-						<CardContent className="p-6">
-							<div className="flex items-start space-x-4">
-								<div className="w-16 h-16 skeleton rounded-xl"></div>
-								<div className="flex-1 space-y-3">
-									<div className="h-6 skeleton rounded w-3/4"></div>
-									<div className="h-4 skeleton rounded w-1/2"></div>
-									<div className="h-4 skeleton rounded w-2/3"></div>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-				) )}
-			</div>
-		)
-	}
-
-	if ( applications.length===0 ) {
-		return (
-			<div className="text-center py-12">
-				<Building2 className="w-16 h-16 text-violet-300/40 mx-auto mb-4" />
-				<h3 className="text-lg font-medium text-white mb-2">No applications yet</h3>
-				<p className="text-violet-200/70">Start tracking your job search by adding your first application.</p>
+			<div className="mt-6">
+				<div className="skeleton h-[45px] w-full" />
+				<div className="mt-6 space-y-4">
+					{Array.from( { length: 6 } ).map( ( _,i ) => (
+						<div key={i} className="skeleton h-5 w-full" />
+					) )}
+				</div>
 			</div>
 		)
 	}
 
 	return (
 		<>
-			<div className="space-y-4">
-				{applications.map( ( app ) => {
-					const status=statusConfig[ app.status as keyof typeof statusConfig ]
-					const priority=app.priority? priorityConfig[ app.priority as keyof typeof priorityConfig ]:null
-					const StatusIcon=status.icon
-
-					return (
-						<Card
-							key={app.id}
-							className="group hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 glass-interactive"
-						>
-							<CardContent className="p-6">
-								<div className="flex items-start justify-between">
-									<div className="flex items-start space-x-4 flex-1">
-										{/* Company Logo */}
-										<div className="w-16 h-16 rounded-xl bg-white/[0.06] flex items-center justify-center border border-white/[0.08]">
-											{app.company.logo? (
-												<img
-													src={app.company.logo}
-													alt={`${app.company.name} logo`}
-													className="w-10 h-10 rounded-lg"
-													onError={( e ) => {
-														const target=e.target as HTMLImageElement
-														target.style.display='none'
-														target.nextElementSibling?.classList.remove( 'hidden' )
-													}}
-												/>
-											):null}
-											<Building2 className="w-8 h-8 text-violet-300/50 hidden" />
-										</div>
-
-										{/* Application Details */}
-										<div className="flex-1 space-y-3">
-											<div className="flex items-start justify-between">
-												<div>
-													<h3 className="text-xl font-semibold text-white group-hover:text-violet-300 transition-colors">
-														{app.position}
-													</h3>
-													<div className="flex items-center space-x-2 mt-1">
-														<Building2 className="w-4 h-4 text-violet-300/50" />
-														<span className="text-lg font-medium text-violet-200/80">
-															{app.company.name}
-														</span>
-													</div>
-												</div>
-
-												<div className="flex items-center space-x-2">
-													<Badge className={status.color}>
-														<StatusIcon className="w-3 h-3 mr-1" />
-														{status.label}
-													</Badge>
-													{priority&&(
-														<Badge className={priority.color}>
-															{priority.label}
-														</Badge>
-													)}
-												</div>
-											</div>
-
-											<div className="flex items-center space-x-4 text-sm text-violet-200/70">
-												{app.location&&(
-													<div className="flex items-center space-x-1">
-														<MapPin className="w-4 h-4" />
-														<span>{app.location}</span>
-														{app.isRemote&&(
-															<Badge className="ml-2 text-xs bg-emerald-500 text-white border-emerald-600">
-																Remote
-															</Badge>
-														)}
-													</div>
-												)}
-												<div className="flex items-center space-x-1">
-													<Calendar className="w-4 h-4" />
-													<span>Applied {formatDate( app.appliedAt )}</span>
-												</div>
-												{app.salary&&(
-													<div className="flex items-center space-x-1">
-														<Star className="w-4 h-4" />
-														<span>{app.salary}</span>
-													</div>
-												)}
-											</div>
-
-											{app.notes&&(
-												<p className="text-sm text-violet-200/70 bg-white/[0.04] p-3 rounded-lg border border-white/[0.06]">
-													{app.notes}
-												</p>
-											)}
-										</div>
-									</div>
-
-									{/* Action Buttons */}
-									<div className="flex items-center space-x-2 ml-4">
-										{app.jobUrl&&(
-											<Button
-												variant="outline"
-												size="sm"
-												onClick={() => window.open( app.jobUrl!,'_blank' )}
-												className="text-violet-300 hover:text-white border-white/[0.10] hover:border-white/[0.20]"
-											>
-												<ExternalLink className="w-4 h-4" />
-											</Button>
-										)}
-										<Button
-											variant="outline"
-											size="sm"
-											className="text-violet-300 hover:text-white border-white/[0.10] hover:border-white/[0.20]"
-											onClick={() => handleEditApplication( app )}
-										>
-											<Edit className="w-4 h-4" />
-										</Button>
-										<Button
-											variant="outline"
-											size="sm"
-											className="text-red-400 hover:text-red-300 border-white/[0.10] hover:border-white/[0.20]"
-										>
-											<Trash2 className="w-4 h-4" />
-										</Button>
-									</div>
-								</div>
-							</CardContent>
-						</Card>
-					)
-				} )}
+			<div className="mt-6 flex items-center border border-br">
+				<span className="border-r border-br px-3.5 py-[13px] text-ac">/</span>
+				<input
+					ref={inputRef}
+					value={query}
+					onChange={event => setQuery( event.target.value )}
+					placeholder="stage:open sort:next-step"
+					spellCheck={false}
+					aria-label="Filter applications"
+					className="flex-1 bg-transparent px-3.5 py-[13px] font-mono text-[13px] text-fg placeholder:text-dim focus:outline-none"
+				/>
+				<span className="border-l border-br px-3.5 py-[13px] text-[11.5px] text-dim">
+					{results.length} result{results.length===1? '':'s'}
+				</span>
 			</div>
 
-			{/* Edit Application Dialog */}
+			<div className="mt-3.5 flex flex-wrap gap-2">
+				{chips.map( chip => (
+					<button
+						key={chip.label}
+						type="button"
+						onClick={() => setQuery( chip.query )}
+						className={cn(
+							'border px-3 py-[7px] text-[11.5px] transition-colors',
+							chip.active
+								? 'border-ac text-ac'
+								:'border-br text-dim hover:border-ac hover:text-ac'
+						)}
+					>
+						{chip.label}
+					</button>
+				) )}
+			</div>
+
+			<div className={cn( 'label mt-[26px] grid border-b border-br pb-2.5',COLUMNS )}>
+				<div>role / company</div>
+				<div>stage</div>
+				<div>priority</div>
+				<div>comp</div>
+				<div>applied</div>
+				<div>deadline</div>
+			</div>
+
+			{results.length===0? (
+				<div className="border-b border-br py-10 text-center text-[12.5px] text-dim">
+					Nothing matches that filter.
+				</div>
+			):(
+				results.map( app => {
+					const expanded=expandedId===app.id
+					const next=getNextStep( app )
+					const open=isOpen( app )
+					const overdue=app.deadline!==null&&next.days!==null&&next.days<0
+					const near=next.days!==null&&next.days>=0&&next.days<=7
+
+					return (
+						<div
+							key={app.id}
+							className={cn(
+								expanded? 'border-b border-ac bg-ft':'row-rule',
+								!open&&!expanded&&'opacity-45'
+							)}
+						>
+							<button
+								type="button"
+								onClick={() => toggleRow( app.id )}
+								aria-expanded={expanded}
+								className={cn(
+									'grid w-full items-center py-4 text-left text-[13px] transition-colors',
+									COLUMNS,
+									!expanded&&'hover:bg-ft'
+								)}
+							>
+								<div className="truncate pr-4">
+									<span className="display text-[14px] text-fg">{app.position}</span>
+									<span className="text-dim">
+										&nbsp;&nbsp;{app.company.name.toLowerCase()}
+										{app.isRemote? ' · remote':app.location? ` · ${app.location.toLowerCase()}`:''}
+									</span>
+								</div>
+
+								<div className={LIVE_STAGES.includes( app.status )? 'text-ac':'text-fg'}>
+									{app.status}
+								</div>
+
+								<div className="text-fg">{app.priority??'—'}</div>
+
+								<div className={app.salary? 'text-fg':'text-dim opacity-60'}>
+									{app.salary??'—'}
+								</div>
+
+								<div className="text-dim">{formatShortDate( app.appliedAt )}</div>
+
+								{/* This column is the deadline itself — a missed one says so,
+								    a near one is accented, an absent one stays blank. */}
+								<div
+									className={cn(
+										!app.deadline&&'text-dim opacity-60',
+										app.deadline&&overdue&&'text-wn',
+										app.deadline&&!overdue&&near&&'text-ac',
+										app.deadline&&!overdue&&!near&&'text-fg'
+									)}
+								>
+									{!app.deadline
+										? '—'
+										:overdue
+											? 'overdue'
+											:formatShortDate( app.deadline )}
+								</div>
+							</button>
+
+							{expanded&&(
+								<ApplicationDetail
+									application={app}
+									onEdit={() => setEditing( app )}
+									onStatusChange={status => changeStatus( app,status )}
+								/>
+							)}
+						</div>
+					)
+				} )
+			)}
+
+			<div className="mt-[18px] flex justify-between text-[12px] text-dim">
+				<span>
+					{results.length} / {applications.length} shown
+				</span>
+				{parsed.stage!=='closed'&&stats.closed>0&&(
+					<button
+						type="button"
+						onClick={() => setQuery( 'stage:closed' )}
+						className="text-ac hover:underline"
+					>
+						show {stats.closed} closed
+					</button>
+				)}
+			</div>
+
 			<EditApplicationDialog
-				open={isEditDialogOpen}
-				onOpenChange={setIsEditDialogOpen}
-				application={editingApplication}
-				onApplicationUpdated={handleApplicationUpdated}
+				open={editing!==null}
+				onOpenChange={next => {
+					if ( !next ) setEditing( null )
+				}}
+				application={editing}
+				onApplicationUpdated={async () => {
+					await onRefresh?.()
+				}}
 			/>
 		</>
 	)

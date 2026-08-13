@@ -1,35 +1,49 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { AddApplicationDialog } from './add-application-dialog'
 
 interface AddApplicationButtonProps {
 	variant?: 'default'|'quick-action'
 	onApplicationAdded?: () => Promise<void>
+	/** Controlled open state, so a keyboard shortcut can raise the dialog. */
+	open?: boolean
+	onOpenChange?: ( open: boolean ) => void
+	label?: string
+	shortcut?: string
 }
 
-export function AddApplicationButton ( { variant='default',onApplicationAdded }: AddApplicationButtonProps ) {
-	const [ isDialogOpen,setIsDialogOpen ]=useState( false )
+export function AddApplicationButton ( {
+	variant='default',
+	onApplicationAdded,
+	open,
+	onOpenChange,
+	label,
+	shortcut,
+}: AddApplicationButtonProps ) {
+	const [ internalOpen,setInternalOpen ]=useState( false )
 
-	const buttonClasses=variant==='quick-action'
-		? "w-full bg-gradient-to-r from-purple-500 to-blue-600 text-white py-3 px-4 rounded-xl font-medium hover:from-purple-600 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-		:"bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
+	const isControlled=open!==undefined
+	const isDialogOpen=isControlled? open:internalOpen
+	const setDialogOpen=( next: boolean ) => {
+		if ( !isControlled ) setInternalOpen( next )
+		onOpenChange?.( next )
+	}
 
 	return (
 		<>
 			<Button
-				onClick={() => setIsDialogOpen( true )}
-				className={buttonClasses}
+				onClick={() => setDialogOpen( true )}
+				className={variant==='quick-action'? 'w-full':undefined}
+				shortcut={shortcut}
 			>
-				<Plus className="w-4 h-4 mr-2" />
-				{variant==='quick-action'? 'Add New Application':'Add Application'}
+				{label??( variant==='quick-action'? 'add new application':'+ new' )}
 			</Button>
 
 			<AddApplicationDialog
 				open={isDialogOpen}
-				onOpenChange={setIsDialogOpen}
+				onOpenChange={setDialogOpen}
 				onApplicationAdded={onApplicationAdded}
 			/>
 		</>

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CodeniWork is a job application tracker built with Next.js 16 (App Router) and React 19, using NeonDB (serverless PostgreSQL) via Drizzle ORM, and NextAuth.js v5 (beta) for authentication. It features credential-based login, passkey/WebAuthn support, and a Clean My Mac-inspired glass-morphism UI.
+CodeniWork is a job application tracker built with Next.js 16 (App Router) and React 19, using NeonDB (serverless PostgreSQL) via Drizzle ORM, and NextAuth.js v5 (beta) for authentication. It features credential-based login, passkey/WebAuthn support, and a "Console" UI — warm charcoal / warm paper, IBM Plex Mono + Sora, moss accent — with light and dark themes.
 
 ## Commands
 
@@ -64,12 +64,15 @@ There is no test suite configured.
 - Commit types: `feat` (minor), `fix`/`perf`/`refactor` (patch), `BREAKING CHANGE` (major), `docs`/`chore`/`style`/`test` (no release)
 
 ### Frontend Structure
-- **Root layout** (`app/layout.tsx`): Inter font, AuthProvider, AnalyticsProvider, Toaster
-- **Dashboard layout** (`app/dashboard/layout.tsx`): Sidebar + main content area with purple gradient background
+- **Root layout** (`app/layout.tsx`): IBM Plex Mono + Sora, pre-paint theme script, AuthProvider, AnalyticsProvider, Toaster
+- **Dashboard layout** (`app/dashboard/layout.tsx`): 196px console rail + scrolling main column
 - Dashboard pages: main dashboard, applications, companies, calendar, contacts, documents, analytics, quick-actions
 - Auth pages: `app/auth/signin/`, `app/auth/signup/`
 - Profile page: `app/profile/`
 - UI components in `components/ui/` are shadcn/ui based (use `cn()` from `lib/utils.ts` for class merging)
+- Design tokens live in `app/globals.css`: `--bg --pn --br --fg --dim --ft --ac --af --wn`, exposed as Tailwind colours (`bg-bg`, `text-dim`, `border-br`, `text-ac`…). Theme is `data-theme` on `<html>`, defaulting to `prefers-color-scheme`
+- Pipeline derivations (next step, action queue, stats, calendar events) are centralised in `lib/applications.ts`; screens read one applications array via `hooks/use-applications.ts` and project it
+- `globals.css` also remaps the legacy violet/status Tailwind scales onto console tokens so routes not yet rebuilt from their design doc stay coherent. Delete a remap block once its screens are redesigned
 - Dashboard components in `components/dashboard/` (dialogs, lists, stats, header)
 
 ### Path Aliases

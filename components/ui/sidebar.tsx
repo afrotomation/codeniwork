@@ -1,163 +1,192 @@
 'use client'
 
-import { Button } from '@/components/ui/button'
+import { useTheme } from '@/hooks/use-theme'
 import { cn } from '@/lib/utils'
-import {
-	BarChart3,
-	Briefcase,
-	Building2,
-	Calendar,
-	ChevronLeft,
-	ChevronRight,
-	Compass,
-	FileText,
-	Settings,
-	Sparkles,
-	Target,
-	Users,
-	Zap
-} from 'lucide-react'
+import { signOut,useSession } from 'next-auth/react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { usePathname,useRouter } from 'next/navigation'
+import { useEffect,useRef,useState } from 'react'
 
 interface SidebarProps {
 	className?: string
 }
 
-const menuItems=[
-	{
-		title: 'Dashboard',
-		icon: BarChart3,
-		href: '/dashboard',
-		active: false
-	},
-	{
-		title: 'Discover',
-		icon: Compass,
-		href: '/dashboard/discover'
-	},
-	{
-		title: 'Applications',
-		icon: Briefcase,
-		href: '/dashboard/applications'
-	},
-	{
-		title: 'Companies',
-		icon: Building2,
-		href: '/dashboard/companies'
-	},
-	{
-		title: 'Calendar',
-		icon: Calendar,
-		href: '/dashboard/calendar'
-	},
-	{
-		title: 'Analytics',
-		icon: Target,
-		href: '/dashboard/analytics'
-	},
-	{
-		title: 'Documents',
-		icon: FileText,
-		href: '/dashboard/documents'
-	},
-	{
-		title: 'Contacts',
-		icon: Users,
-		href: '/dashboard/contacts'
-	},
-	{
-		title: 'AI Tools',
-		icon: Sparkles,
-		href: '/dashboard/ai-tools'
-	},
-	{
-		title: 'Quick Actions',
-		icon: Zap,
-		href: '/dashboard/quick-actions'
-	}
+interface NavItem {
+	label: string
+	href: string
+	/** The key that jumps here. Shown at the right of the row. */
+	key: string
+}
+
+const navItems: NavItem[]=[
+	{ label: 'pipeline',href: '/dashboard',key: '1' },
+	{ label: 'discover',href: '/dashboard/discover',key: '2' },
+	{ label: 'applications',href: '/dashboard/applications',key: '3' },
+	{ label: 'companies',href: '/dashboard/companies',key: '4' },
+	{ label: 'calendar',href: '/dashboard/calendar',key: '5' },
+	{ label: 'analytics',href: '/dashboard/analytics',key: '6' },
+	{ label: 'documents',href: '/dashboard/documents',key: '7' },
+	{ label: 'contacts',href: '/dashboard/contacts',key: '8' },
+	{ label: 'ai tools',href: '/dashboard/ai-tools',key: '9' },
+	{ label: 'quick actions',href: '/dashboard/quick-actions',key: '0' },
 ]
 
+/** The shortcuts worth naming differ per screen. */
+const hintsByRoute: Record<string,[ string,string ][]>={
+	'/dashboard': [ [ 'N','new application' ],[ '/','search' ],[ 'G','go to stage' ] ],
+	'/dashboard/applications': [ [ '/','filter' ],[ 'E','edit row' ],[ '↵','expand' ] ],
+	'/dashboard/calendar': [ [ 'T','today' ],[ '← →','month' ] ],
+}
+
+const defaultHints: [ string,string ][]=[ [ '1-0','jump' ],[ 'N','new application' ] ]
+
 export function Sidebar ( { className }: SidebarProps ) {
-	const [ isCollapsed,setIsCollapsed ]=useState( false )
 	const pathname=usePathname()
+	const router=useRouter()
+	const { data: session }=useSession()
+	const { theme,toggle }=useTheme()
+	const [ isAccountOpen,setIsAccountOpen ]=useState( false )
+	const accountRef=useRef<HTMLDivElement>( null )
+
+	const hints=hintsByRoute[ pathname ]??defaultHints
+
+	// Number keys jump between sections, as the row hints promise.
+	useEffect( () => {
+		const onKeyDown=( event: KeyboardEvent ) => {
+			if ( event.metaKey||event.ctrlKey||event.altKey ) return
+
+			const target=event.target as HTMLElement|null
+			if ( target?.isContentEditable ) return
+			if ( target&&/^(INPUT|TEXTAREA|SELECT)$/.test( target.tagName ) ) return
+
+			const item=navItems.find( nav => nav.key===event.key )
+			if ( !item ) return
+
+			event.preventDefault()
+			router.push( item.href )
+		}
+
+		window.addEventListener( 'keydown',onKeyDown )
+		return () => window.removeEventListener( 'keydown',onKeyDown )
+	},[ router ] )
+
+	useEffect( () => {
+		if ( !isAccountOpen ) return
+
+		const onPointerDown=( event: MouseEvent ) => {
+			if ( accountRef.current&&!accountRef.current.contains( event.target as Node ) ) {
+				setIsAccountOpen( false )
+			}
+		}
+
+		document.addEventListener( 'mousedown',onPointerDown )
+		return () => document.removeEventListener( 'mousedown',onPointerDown )
+	},[ isAccountOpen ] )
+
+	const account=session?.user?.email??session?.user?.name??'not signed in'
 
 	return (
-		<div className={cn(
-			"relative h-screen bg-white/[0.03] backdrop-blur-2xl border-r border-white/[0.06] transition-all duration-300",
-			isCollapsed? "w-16":"w-64",
-			className
-		)}>
-			{/* Content */}
-			<div className="relative z-10 h-full flex flex-col">
-				{/* Header */}
-				<div className="flex items-center justify-between p-4 border-b border-white/[0.06]">
-					{!isCollapsed&&(
-						<div className="flex items-center space-x-2">
-							<div className="w-8 h-8 rounded-lg flex items-center justify-center">
-								<img src="/favicon.svg" alt="CodeniWork" className="w-6 h-6" />
-							</div>
-							<span className="text-white font-semibold text-lg">CodeniWork</span>
+		<div
+			className={cn(
+				'flex w-[196px] flex-none flex-col gap-7 border-r border-br bg-pn px-[18px] py-6',
+				className
+			)}
+		>
+			<Link href="/dashboard" className="flex items-center gap-[9px] text-fg no-underline">
+				<svg viewBox="0 0 32 32" width="18" height="18" className="block flex-none" aria-hidden="true">
+					<rect width="32" height="32" rx="6" fill="var(--ac)" />
+					<path d="M8 10h16v2H8zm0 4h16v10H8z" fill="var(--af)" />
+					<path d="M12 8h8v2h-8z" fill="var(--af)" />
+				</svg>
+				<span className="font-medium">codeniwork</span>
+			</Link>
+
+			<nav className="flex flex-col">
+				{navItems.map( item => {
+					const isActive=pathname===item.href
+					return (
+						<Link
+							key={item.href}
+							href={item.href}
+							aria-current={isActive? 'page':undefined}
+							className={cn(
+								'-mx-[10px] flex justify-between px-[10px] py-2 text-[12.5px] no-underline transition-colors',
+								isActive
+									? 'bg-ac text-af'
+									:'text-dim hover:text-fg'
+							)}
+						>
+							<span>{item.label}</span>
+							<span className={isActive? 'opacity-55':'opacity-50'}>{item.key}</span>
+						</Link>
+					)
+				} )}
+			</nav>
+
+			<div className="mt-auto flex flex-col gap-[13px]">
+				<div className="text-[11px] leading-[1.8] text-dim opacity-80">
+					{hints.map( ( [ key,description ] ) => (
+						<div key={key}>
+							{key}&nbsp;&nbsp;{description}
 						</div>
-					)}
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={() => setIsCollapsed( !isCollapsed )}
-						className="text-violet-200 hover:bg-white/[0.06] hover:text-white p-1"
-					>
-						{isCollapsed? <ChevronRight className="w-4 h-4" />:<ChevronLeft className="w-4 h-4" />}
-					</Button>
+					) )}
 				</div>
 
-				{/* Navigation Menu */}
-				<nav className="flex-1 px-3 py-4 space-y-1">
-					{menuItems.map( ( item ) => {
-						const Icon=item.icon
-						const isActive=pathname===item.href
-						return (
-							<Link
-								key={item.title}
-								href={item.href}
-								className={cn(
-									"flex items-center space-x-3 px-3 py-2.5 rounded-button text-white/80 transition-all duration-200 group",
-									isActive
-										? "bg-white/[0.08] text-white border border-white/[0.10] shadow-glass"
-										:"hover:bg-white/[0.04] hover:text-white"
-								)}
-							>
-								<div className={cn(
-									"p-1.5 rounded-lg transition-all duration-200",
-									isActive
-										? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/20"
-										:"text-violet-300/70 group-hover:text-violet-200"
-								)}>
-									<Icon className="w-4 h-4" />
-								</div>
-								{!isCollapsed&&(
-									<span className={cn(
-										"text-sm font-medium transition-all duration-200",
-										isActive? "text-white":"text-violet-200/80 group-hover:text-white"
-									)}>
-										{item.title}
-									</span>
-								)}
-							</Link>
-						)
-					} )}
-				</nav>
+				<div className="h-px bg-br" />
 
-				{/* Footer */}
-				<div className="p-3 border-t border-white/[0.06]">
-					<Button
-						variant="ghost"
-						size="sm"
-						className="w-full text-violet-200/70 hover:bg-white/[0.04] hover:text-white justify-start"
+				<button
+					type="button"
+					onClick={toggle}
+					className="flex justify-between text-left text-[11px] text-dim transition-colors hover:text-fg"
+				>
+					<span>theme</span>
+					<span>{theme==='dark'? 'dark':'light'}</span>
+				</button>
+
+				<div className="relative" ref={accountRef}>
+					<button
+						type="button"
+						onClick={() => setIsAccountOpen( open => !open )}
+						className="w-full truncate text-left text-[11.5px] text-dim transition-colors hover:text-fg"
+						title={account}
 					>
-						<Settings className="w-4 h-4 mr-3" />
-						{!isCollapsed&&<span className="text-sm">Settings</span>}
-					</Button>
+						{account}
+					</button>
+
+					{isAccountOpen&&(
+						<div className="absolute bottom-full left-0 z-50 mb-2 w-[168px] border border-br bg-pn">
+							<button
+								type="button"
+								onClick={() => {
+									setIsAccountOpen( false )
+									router.push( '/profile' )
+								}}
+								className="block w-full px-3 py-2.5 text-left text-[12px] text-dim transition-colors hover:bg-ft hover:text-fg"
+							>
+								profile
+							</button>
+							{session?.user? (
+								<button
+									type="button"
+									onClick={() => signOut( { callbackUrl: '/' } )}
+									className="block w-full border-t border-br px-3 py-2.5 text-left text-[12px] text-dim transition-colors hover:bg-ft hover:text-fg"
+								>
+									sign out
+								</button>
+							):(
+								<button
+									type="button"
+									onClick={() => {
+										setIsAccountOpen( false )
+										router.push( '/auth/signin' )
+									}}
+									className="block w-full border-t border-br px-3 py-2.5 text-left text-[12px] text-dim transition-colors hover:bg-ft hover:text-fg"
+								>
+									sign in
+								</button>
+							)}
+						</div>
+					)}
 				</div>
 			</div>
 		</div>

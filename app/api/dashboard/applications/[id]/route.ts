@@ -1,10 +1,69 @@
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { companies,jobApplications } from '@/lib/db/schema'
-import { and,eq } from 'drizzle-orm'
+import { applicationEvents,companies,jobApplications } from '@/lib/db/schema'
+import { and,asc,eq } from 'drizzle-orm'
 import { NextRequest,NextResponse } from 'next/server'
 import { z } from 'zod/v4'
 import { createActivityEvent } from '@/lib/db/queries'
+
+/**
+ * One application's event history, oldest first — the timeline shown when a
+ * row on the applications screen is expanded.
+ */
+export async function GET (
+	_request: NextRequest,
+	{ params }: { params: Promise<{ id: string }> }
+) {
+	try {
+		const session=await auth()
+
+		if ( !session?.user?.id ) {
+			return NextResponse.json( { error: 'Unauthorized' },{ status: 401 } )
+		}
+
+		const { id: applicationId }=await params
+
+		// Scope the lookup to the session user so an id alone reveals nothing.
+		const [ application ]=await db
+			.select( {
+				id: jobApplications.id,
+				appliedAt: jobApplications.appliedAt,
+			} )
+			.from( jobApplications )
+			.where( and(
+				eq( jobApplications.id,applicationId ),
+				eq( jobApplications.userId,session.user.id )
+			) )
+			.limit( 1 )
+
+		if ( !application ) {
+			return NextResponse.json(
+				{ error: 'Application not found or access denied' },
+				{ status: 404 }
+			)
+		}
+
+		const events=await db
+			.select( {
+				id: applicationEvents.id,
+				type: applicationEvents.type,
+				title: applicationEvents.title,
+				description: applicationEvents.description,
+				date: applicationEvents.date,
+			} )
+			.from( applicationEvents )
+			.where( eq( applicationEvents.applicationId,applicationId ) )
+			.orderBy( asc( applicationEvents.date ) )
+
+		return NextResponse.json( { events } )
+	} catch ( error ) {
+		console.error( 'Error fetching application events:',error )
+		return NextResponse.json(
+			{ error: 'Failed to fetch application events' },
+			{ status: 500 }
+		)
+	}
+}
 
 // Validation schema for updating job applications
 const updateApplicationSchema=z.object( {

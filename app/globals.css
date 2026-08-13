@@ -1,248 +1,429 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@theme {
-  /* Custom colors */
-  --color-base-50: #0f0a1a;
-  --color-base-100: #1a1030;
-  --color-base-200: #261646;
-  --color-surface-50: rgba(255, 255, 255, 0.04);
-  --color-surface-100: rgba(255, 255, 255, 0.07);
-  --color-surface-200: rgba(255, 255, 255, 0.10);
+/* ══════════════════════════════════════════════════════════════
+   Console — warm charcoal / warm paper, IBM Plex Mono + Sora,
+   moss accent. Palette is defined once per theme below and every
+   utility resolves through it, so both themes stay in step.
+   ══════════════════════════════════════════════════════════════ */
 
-  /* Custom border-radius */
-  --radius-card: 16px;
-  --radius-card-lg: 20px;
-  --radius-button: 12px;
-  --radius-input: 12px;
+:root {
+	/* light — warm paper */
+	--bg: #f4f2ec;
+	--pn: #eae7df;
+	--br: rgba(23, 22, 20, .15);
+	--fg: #1f1e1b;
+	--dim: rgba(31, 30, 27, .55);
+	--dim-solid: #6b6862;
+	--ft: rgba(31, 30, 27, .045);
+	--ac: #4a7c37;
+	--ac-deep: #35591f;
+	--af: #f7f6f1;
+	--wn: #9a6512;
+	/* danger is not in the source palette; this is the warm brick that fits it */
+	--dg: #a34d22;
 
-  /* Custom box-shadows */
-  --shadow-glass: 0 4px 24px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  --shadow-glass-hover: 0 8px 40px rgba(0, 0, 0, 0.20), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --shadow-glass-elevated: 0 12px 48px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  --shadow-glow-violet: 0 0 24px rgba(139, 92, 246, 0.35), 0 0 48px rgba(139, 92, 246, 0.15);
-  --shadow-glow-cyan: 0 0 24px rgba(34, 211, 238, 0.25), 0 0 48px rgba(34, 211, 238, 0.10);
+	/* Fill tones for legacy button and badge backgrounds. Deliberately the
+	   same in both themes: they always carry light text, so they have to stay
+	   dark enough for it whichever ground they sit on. */
+	--ac-fill: #4a7c37;
+	--wn-fill: #8a5a10;
+	--dg-fill: #9c4620;
+	--neutral-fill: #4a4640;
 
-  /* Custom animations */
-  --animate-fade-up: fadeUp 0.5s ease-out both;
-  --animate-glow-pulse: glowPulse 3s ease-in-out infinite;
-  --animate-shimmer: shimmer 1.8s ease-in-out infinite;
+	color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+	/* dark — warm charcoal */
+	--bg: #171614;
+	--pn: #1d1c19;
+	--br: rgba(234, 231, 224, .13);
+	--fg: #eae7e0;
+	--dim: rgba(234, 231, 224, .5);
+	--dim-solid: #8f8b82;
+	--ft: rgba(234, 231, 224, .05);
+	--ac: #7fbb6a;
+	--ac-deep: #9acc86;
+	--af: #171614;
+	--wn: #d8a24a;
+	--dg: #c2683f;
+
+	color-scheme: dark;
+}
+
+/* System preference wins until the user picks a side explicitly. */
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		--bg: #171614;
+		--pn: #1d1c19;
+		--br: rgba(234, 231, 224, .13);
+		--fg: #eae7e0;
+		--dim: rgba(234, 231, 224, .5);
+		--dim-solid: #8f8b82;
+		--ft: rgba(234, 231, 224, .05);
+		--ac: #7fbb6a;
+		--ac-deep: #9acc86;
+		--af: #171614;
+		--wn: #d8a24a;
+		--dg: #c2683f;
+
+		color-scheme: dark;
+	}
+}
+
+@theme inline {
+	/* console tokens as Tailwind colors: bg-bg, text-fg, border-br, text-dim… */
+	--color-bg: var(--bg);
+	--color-pn: var(--pn);
+	--color-br: var(--br);
+	--color-fg: var(--fg);
+	--color-dim: var(--dim);
+	--color-dim-solid: var(--dim-solid);
+	--color-ft: var(--ft);
+	--color-ac: var(--ac);
+	--color-ac-deep: var(--ac-deep);
+	--color-af: var(--af);
+	--color-wn: var(--wn);
+	--color-dg: var(--dg);
+
+	--font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+	--font-sans: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+	--font-display: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+
+	/* the console is square; radii exist only where a circle is meant */
+	--radius-card: 0px;
+	--radius-card-lg: 0px;
+	--radius-button: 0px;
+	--radius-input: 0px;
+
+	--shadow-glass: none;
+	--shadow-glass-hover: none;
+	--shadow-glass-elevated: none;
+	--shadow-glow-violet: 0 0 0 1px var(--ac);
+	--shadow-glow-cyan: 0 0 0 1px var(--br);
+
+	--animate-fade-up: fadeUp .4s ease-out both;
+	--animate-glow-pulse: none;
+	--animate-shimmer: shimmer 1.8s ease-in-out infinite;
+
+	/* ── Legacy palette remap ───────────────────────────────────
+	   Routes that have not been redesigned yet still reference the old violet
+	   and status palettes directly. Pointing those scales at the console
+	   tokens keeps them coherent without editing every file. Delete a block
+	   once the screens that depend on it are rebuilt from their design doc.
+
+	   The scales split by how the codebase actually uses them: shades ≤400 are
+	   text on the page background, so they resolve to theme-aware tokens that
+	   flip with it. Shades ≥500 are fills — button and badge backgrounds that
+	   carry light text — so they resolve to fixed tones dark enough to keep
+	   that text legible in either theme. */
+	--color-white: var(--fg);
+
+	--color-violet-50: var(--fg);
+	--color-violet-100: var(--fg);
+	--color-violet-200: var(--dim-solid);
+	--color-violet-300: var(--dim-solid);
+	--color-violet-400: var(--ac);
+	--color-violet-500: var(--ac-fill);
+	--color-violet-600: var(--ac-fill);
+	--color-violet-700: var(--ac-fill);
+	--color-violet-800: var(--pn);
+	--color-violet-900: var(--pn);
+	--color-violet-950: var(--bg);
+
+	--color-purple-50: var(--fg);
+	--color-purple-100: var(--fg);
+	--color-purple-200: var(--dim-solid);
+	--color-purple-300: var(--dim-solid);
+	--color-purple-400: var(--ac);
+	--color-purple-500: var(--ac-fill);
+	--color-purple-600: var(--ac-fill);
+	--color-purple-700: var(--ac-fill);
+	--color-purple-800: var(--pn);
+	--color-purple-900: var(--pn);
+	--color-purple-950: var(--bg);
+
+	--color-indigo-50: var(--fg);
+	--color-indigo-100: var(--fg);
+	--color-indigo-200: var(--dim-solid);
+	--color-indigo-300: var(--dim-solid);
+	--color-indigo-400: var(--ac);
+	--color-indigo-500: var(--ac-fill);
+	--color-indigo-600: var(--ac-fill);
+	--color-indigo-700: var(--ac-fill);
+	--color-indigo-800: var(--pn);
+	--color-indigo-900: var(--pn);
+	--color-indigo-950: var(--bg);
+
+	/* positive → moss */
+	--color-emerald-200: var(--ac);
+	--color-emerald-300: var(--ac);
+	--color-emerald-400: var(--ac);
+	--color-emerald-500: var(--ac-fill);
+	--color-emerald-600: var(--ac-fill);
+	--color-emerald-700: var(--ac-fill);
+	--color-green-200: var(--ac);
+	--color-green-300: var(--ac);
+	--color-green-400: var(--ac);
+	--color-green-500: var(--ac-fill);
+	--color-green-600: var(--ac-fill);
+	--color-green-700: var(--ac-fill);
+
+	/* attention → amber */
+	--color-amber-200: var(--wn);
+	--color-amber-300: var(--wn);
+	--color-amber-400: var(--wn);
+	--color-amber-500: var(--wn-fill);
+	--color-amber-600: var(--wn-fill);
+	--color-amber-700: var(--wn-fill);
+	--color-orange-200: var(--wn);
+	--color-orange-300: var(--wn);
+	--color-orange-400: var(--wn);
+	--color-orange-500: var(--wn-fill);
+	--color-orange-600: var(--wn-fill);
+	--color-orange-700: var(--wn-fill);
+	--color-yellow-300: var(--wn);
+	--color-yellow-400: var(--wn);
+	--color-yellow-500: var(--wn-fill);
+	--color-yellow-600: var(--wn-fill);
+
+	/* negative → brick */
+	--color-red-100: var(--dg);
+	--color-red-200: var(--dg);
+	--color-red-300: var(--dg);
+	--color-red-400: var(--dg);
+	--color-red-500: var(--dg-fill);
+	--color-red-600: var(--dg-fill);
+	--color-red-700: var(--dg-fill);
+	--color-rose-400: var(--dg);
+	--color-rose-500: var(--dg-fill);
+	--color-rose-600: var(--dg-fill);
+	--color-pink-500: var(--dg-fill);
+	--color-pink-600: var(--dg-fill);
+
+	/* decorative cool tones carried no meaning → neutral */
+	--color-blue-200: var(--dim-solid);
+	--color-blue-300: var(--dim-solid);
+	--color-blue-400: var(--dim-solid);
+	--color-blue-500: var(--neutral-fill);
+	--color-blue-600: var(--neutral-fill);
+	--color-blue-700: var(--neutral-fill);
+	--color-cyan-300: var(--dim-solid);
+	--color-cyan-400: var(--dim-solid);
+	--color-cyan-500: var(--neutral-fill);
+	--color-cyan-600: var(--neutral-fill);
+	--color-teal-300: var(--dim-solid);
+	--color-teal-400: var(--dim-solid);
+	--color-teal-500: var(--neutral-fill);
+	--color-teal-600: var(--neutral-fill);
+	--color-teal-700: var(--neutral-fill);
+	--color-sky-400: var(--dim-solid);
+	--color-sky-500: var(--neutral-fill);
+
+	/* neutral chrome → the console's own panel tones */
+	--color-gray-700: var(--neutral-fill);
+	--color-gray-800: var(--pn);
+	--color-gray-900: var(--bg);
+	--color-slate-700: var(--neutral-fill);
+	--color-slate-800: var(--pn);
+	--color-slate-900: var(--bg);
 }
 
 @keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
 
-@keyframes glowPulse {
-  0%, 100% {
-    box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 40px rgba(139, 92, 246, 0.5);
-  }
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
 
 @keyframes shimmer {
-  100% {
-    transform: translateX(100%);
-  }
+	100% {
+		transform: translateX(100%);
+	}
 }
 
-/* ── Design Tokens ─────────────────────────────────────── */
-:root {
-  --base-hue: 265;
-  --glass-bg: rgba(255, 255, 255, 0.04);
-  --glass-bg-elevated: rgba(255, 255, 255, 0.07);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-hover: rgba(255, 255, 255, 0.14);
-  --glow-violet: rgba(139, 92, 246, 0.35);
-  --glow-cyan: rgba(34, 211, 238, 0.25);
-}
-
-/* ── Animated Mesh Gradient Background ─────────────────── */
-@property --mx {
-  syntax: "<percentage>";
-  inherits: false;
-  initial-value: 30%;
-}
-@property --my {
-  syntax: "<percentage>";
-  inherits: false;
-  initial-value: 20%;
-}
-@property --mx2 {
-  syntax: "<percentage>";
-  inherits: false;
-  initial-value: 70%;
-}
-@property --my2 {
-  syntax: "<percentage>";
-  inherits: false;
-  initial-value: 75%;
+/* ── Base ──────────────────────────────────────────────────── */
+html {
+	background: var(--bg);
 }
 
 body {
-  @apply relative text-white min-h-screen;
-  background-color: #0f0a1a;
+	margin: 0;
+	min-height: 100vh;
+	background: var(--bg);
+	color: var(--fg);
+	font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+	font-size: 13px;
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
 }
 
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  background:
-    radial-gradient(ellipse 60% 50% at var(--mx) var(--my), rgba(124, 58, 237, 0.35) 0%, transparent 70%),
-    radial-gradient(ellipse 50% 60% at var(--mx2) var(--my2), rgba(79, 70, 229, 0.30) 0%, transparent 70%),
-    radial-gradient(ellipse 45% 40% at 55% 50%, rgba(139, 92, 246, 0.18) 0%, transparent 60%),
-    radial-gradient(ellipse 70% 60% at 40% 80%, rgba(30, 27, 75, 0.90) 0%, transparent 70%);
-  animation: meshDrift 25s ease-in-out infinite alternate;
-  pointer-events: none;
+::selection {
+	background: var(--ac);
+	color: var(--af);
 }
 
-@keyframes meshDrift {
-  0% {
-    --mx: 30%;
-    --my: 20%;
-    --mx2: 70%;
-    --my2: 75%;
-  }
-  33% {
-    --mx: 55%;
-    --my: 35%;
-    --mx2: 45%;
-    --my2: 60%;
-  }
-  66% {
-    --mx: 40%;
-    --my: 60%;
-    --mx2: 65%;
-    --my2: 30%;
-  }
-  100% {
-    --mx: 60%;
-    --my: 25%;
-    --mx2: 35%;
-    --my2: 70%;
-  }
+/* Console scrollbars — a hairline, not a widget. */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--br) transparent;
 }
 
-/* Noise texture overlay for glass realism */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  opacity: 0.03;
-  pointer-events: none;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 256px 256px;
+*::-webkit-scrollbar {
+	width: 9px;
+	height: 9px;
 }
 
-/* ── Glass Utility Classes ─────────────────────────────── */
+*::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+	background: var(--br);
+	border: 3px solid transparent;
+	background-clip: content-box;
+}
+
+/* ── Console primitives ────────────────────────────────────── */
+
+/* A bounded region: hairline box, no fill. */
+@utility panel {
+	border: 1px solid var(--br);
+	background: transparent;
+}
+
+/* A region that wants attention: accent rule + faint wash. */
+@utility panel-accent {
+	border: 1px solid var(--ac);
+	background: var(--ft);
+}
+
+@utility panel-warn {
+	border: 1px solid var(--wn);
+	background: transparent;
+}
+
+/* Column headers and eyebrows share one voice. */
+@utility label {
+	font-size: 10.5px;
+	letter-spacing: .1em;
+	text-transform: uppercase;
+	color: var(--dim);
+}
+
+@utility eyebrow {
+	font-size: 11px;
+	letter-spacing: .12em;
+	text-transform: uppercase;
+	color: var(--dim);
+}
+
+/* Display type — the one place Sora appears. */
+@utility display {
+	font-family: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+	font-weight: 300;
+	letter-spacing: -.02em;
+}
+
+@utility row-rule {
+	border-bottom: 1px solid var(--ft);
+}
+
+/* ── Legacy utilities, restated in console terms ───────────────
+   Same class names the un-redesigned routes already use, so they
+   inherit the console rather than the violet glass they were
+   written against. */
 @utility glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--glass-border);
-  box-shadow:
-    0 4px 24px rgba(0, 0, 0, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+	background: var(--ft);
+	border: 1px solid var(--br);
+	box-shadow: none;
+	backdrop-filter: none;
 }
 
 @utility glass-elevated {
-  background: var(--glass-bg-elevated);
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
-  border: 1px solid var(--glass-border-hover);
-  box-shadow:
-    0 8px 40px rgba(0, 0, 0, 0.20),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+	background: var(--pn);
+	border: 1px solid var(--br);
+	box-shadow: none;
+	backdrop-filter: none;
 }
 
 @utility glass-interactive {
-  background: var(--glass-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--glass-border);
-  box-shadow:
-    0 4px 24px rgba(0, 0, 0, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	background: transparent;
+	border: 1px solid var(--br);
+	box-shadow: none;
+	backdrop-filter: none;
+	transition: background-color .15s ease, border-color .15s ease;
+}
+
+.glass-interactive:hover {
+	background: var(--ft);
+	border-color: var(--ac);
+	transform: none;
 }
 
 @utility text-gradient-primary {
-  @apply bg-gradient-to-r from-violet-400 via-purple-400 to-indigo-400 bg-clip-text text-transparent;
+	color: var(--ac);
+	background: none;
+	-webkit-text-fill-color: currentColor;
 }
 
 @utility text-gradient-heading {
-  @apply bg-gradient-to-r from-white via-violet-200 to-purple-300 bg-clip-text text-transparent;
+	font-family: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+	font-weight: 300;
+	letter-spacing: -.02em;
+	color: var(--fg);
+	background: none;
+	-webkit-text-fill-color: currentColor;
 }
 
 @utility animate-fade-up {
-  animation: fadeUp 0.5s ease-out both;
+	animation: fadeUp .4s ease-out both;
 }
 
 @utility stagger-1 {
-  animation-delay: 50ms;
+	animation-delay: 50ms;
 }
 
 @utility stagger-2 {
-  animation-delay: 100ms;
+	animation-delay: 100ms;
 }
 
 @utility stagger-3 {
-  animation-delay: 150ms;
+	animation-delay: 150ms;
 }
 
 @utility stagger-4 {
-  animation-delay: 200ms;
+	animation-delay: 200ms;
 }
 
 @utility stagger-5 {
-  animation-delay: 250ms;
+	animation-delay: 250ms;
 }
 
 @utility stagger-6 {
-  animation-delay: 300ms;
+	animation-delay: 300ms;
 }
 
 @utility skeleton {
-  @apply relative overflow-hidden;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
+	@apply relative overflow-hidden;
+	background: var(--ft);
+	border-radius: 0;
 }
 
-/* glass-interactive hover state (can't use @utility for pseudo-classes) */
-.glass-interactive:hover {
-  background: var(--glass-bg-elevated);
-  border-color: var(--glass-border-hover);
-  box-shadow:
-    0 8px 40px rgba(0, 0, 0, 0.20),
-    0 0 0 1px rgba(139, 92, 246, 0.10),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  transform: translateY(-2px);
-}
-
-/* Skeleton shimmer pseudo-element */
 .skeleton::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.06) 50%,
-    transparent 100%
-  );
-  animation: shimmer 1.8s ease-in-out infinite;
-  transform: translateX(-100%);
+	content: '';
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(90deg,
+			transparent 0%,
+			var(--ft) 50%,
+			transparent 100%);
+	animation: shimmer 1.8s ease-in-out infinite;
+	transform: translateX(-100%);
 }

@@ -4,20 +4,20 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 const badgeVariants=cva(
-	"inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:ring-offset-2",
+	"inline-flex items-center border px-2.5 py-0.5 font-mono text-[11.5px] font-normal transition-colors duration-150 focus:outline-none",
 	{
 		variants: {
 			variant: {
 				default:
-					"border-transparent bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md",
+					"border-ac text-ac",
 				secondary:
-					"border-white/[0.08] bg-white/[0.06] backdrop-blur-xl text-violet-200",
+					"border-br text-dim",
 				destructive:
-					"border-transparent bg-red-500/20 text-red-300",
-				outline: "text-violet-200 border-white/[0.10] hover:bg-white/[0.06]",
-				success: "border-transparent bg-emerald-500/20 text-emerald-300",
-				warning: "border-transparent bg-amber-500/20 text-amber-300",
-				info: "border-transparent bg-blue-500/20 text-blue-300",
+					"border-dg text-dg",
+				outline: "border-br text-dim hover:border-ac hover:text-ac",
+				success: "border-ac text-ac",
+				warning: "border-wn text-wn",
+				info: "border-br text-dim",
 			},
 		},
 		defaultVariants: {

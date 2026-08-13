@@ -147,6 +147,13 @@ const quickActions = [
 				color: 'from-gray-500 to-gray-600',
 				action: 'refresh-data',
 				shortcut: 'Ctrl + R'
+			},
+			{
+				title: 'Auto-Reject Old Apps',
+				description: 'Close applications silent for 21 days',
+				icon: RefreshCw,
+				color: 'from-orange-500 to-orange-600',
+				action: 'auto-reject'
 			}
 		]
 	}
@@ -184,6 +191,9 @@ export default function QuickActionsPage() {
 			case 'refresh-data':
 				handleRefreshData()
 				break
+			case 'auto-reject':
+				handleAutoReject()
+				break
 			case 'navigate':
 				if (action.href) {
 					router.push(action.href)
@@ -191,6 +201,23 @@ export default function QuickActionsPage() {
 				break
 			default:
 				break
+		}
+	}
+
+	// Close out applications that have been silent past the auto-reject window.
+	const handleAutoReject = async () => {
+		try {
+			const response = await fetch('/api/dashboard/applications/auto-reject', {
+				method: 'POST'
+			})
+			if (!response.ok) {
+				throw new Error('Failed to run auto-rejection')
+			}
+			const result = await response.json()
+			alert(`Auto-rejection completed: ${result.rejectedCount} applications processed`)
+		} catch (error) {
+			console.error('Error running auto-rejection:', error)
+			alert('Error running auto-rejection. Check console for details.')
 		}
 	}
 
