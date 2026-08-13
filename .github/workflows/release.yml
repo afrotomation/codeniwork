@@ -1,0 +1,37 @@
+name: release
+
+on:
+  push:
+    branches: [master, beta]
+
+# Only one release may be in flight: two concurrent runs would race for the tag.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push the tag and the release commit
+  issues: write # comment on issues the release closes
+  pull-requests: write # and on their pull requests
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # semantic-release reads every tag to work out the last release.
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bunx semantic-release
