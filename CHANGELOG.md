@@ -1,3 +1,19 @@
+## [1.9.0](https://github.com/afrotomation/codeniwork/compare/v1.8.1...v1.9.0) (2026-08-13)
+
+### Features
+
+* **ui:** rebuild landing, auth and the remaining seven console screens ([94298e3](https://github.com/afrotomation/codeniwork/commit/94298e3b158a30501f46b4ee1349039286e5527a))
+* **ui:** rebuild the console shell and pipeline screens ([3bd349c](https://github.com/afrotomation/codeniwork/commit/3bd349cadb02ce4acab90d806d67290b5915bca5))
+
+### Bug Fixes
+
+* **auth:** make the route guard actually guard ([647e129](https://github.com/afrotomation/codeniwork/commit/647e129a21796ec3485bbb4eb2ce781aaca1a2ca))
+* **docker:** make bun work on arm64 + refresh bun.lock ([4263a8a](https://github.com/afrotomation/codeniwork/commit/4263a8a373b4d4bc7f6cb20ca066b249b9467dc8))
+
+### Performance Improvements
+
+* **docker:** cache install layer + add dockerignore ([0c587ff](https://github.com/afrotomation/codeniwork/commit/0c587ff5921ac9e0ab83e9360ee161494ee8fb95))
+
 ## [1.8.1](https://git.afrotomation.com/afrotomation/codeniwork/compare/v1.8.0...v1.8.1) (2026-05-18)
 
 ### Bug Fixes
