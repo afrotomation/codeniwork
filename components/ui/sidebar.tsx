@@ -1,5 +1,6 @@
 'use client'
 
+import { BrandMark } from '@/components/ui/brand-mark'
 import { useTheme } from '@/hooks/use-theme'
 import { cn } from '@/lib/utils'
 import { signOut,useSession } from 'next-auth/react'
@@ -36,6 +37,13 @@ const hintsByRoute: Record<string,[ string,string ][]>={
 	'/dashboard': [ [ 'N','new application' ],[ '/','search' ],[ 'G','go to stage' ] ],
 	'/dashboard/applications': [ [ '/','filter' ],[ 'E','edit row' ],[ '↵','expand' ] ],
 	'/dashboard/calendar': [ [ 'T','today' ],[ '← →','month' ] ],
+	'/dashboard/discover': [ [ '/','filter' ],[ 'S','save job' ] ],
+	'/dashboard/companies': [ [ 'E','edit company' ] ],
+	'/dashboard/contacts': [ [ '/','search' ] ],
+	'/dashboard/analytics': [ [ 'R','refresh' ] ],
+	'/dashboard/documents': [ [ 'U','upload' ],[ 'V','view' ] ],
+	'/dashboard/ai-tools': [ [ '⌘⏎','run tool' ] ],
+	'/dashboard/quick-actions': [ [ '/','filter commands' ] ],
 }
 
 const defaultHints: [ string,string ][]=[ [ '1-0','jump' ],[ 'N','new application' ] ]
@@ -93,11 +101,7 @@ export function Sidebar ( { className }: SidebarProps ) {
 			)}
 		>
 			<Link href="/dashboard" className="flex items-center gap-[9px] text-fg no-underline">
-				<svg viewBox="0 0 32 32" width="18" height="18" className="block flex-none" aria-hidden="true">
-					<rect width="32" height="32" rx="6" fill="var(--ac)" />
-					<path d="M8 10h16v2H8zm0 4h16v10H8z" fill="var(--af)" />
-					<path d="M12 8h8v2h-8z" fill="var(--af)" />
-				</svg>
+				<BrandMark />
 				<span className="font-medium">codeniwork</span>
 			</Link>
 

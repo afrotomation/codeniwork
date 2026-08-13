@@ -1,367 +1,357 @@
 'use client'
 
+import { ExportDataDialog } from '@/components/dashboard/export-data-dialog'
+import { DashboardHeader } from '@/components/dashboard/header'
 import { Button } from '@/components/ui/button'
-import { Card,CardContent,CardHeader,CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { useApplications } from '@/hooks/use-applications'
+import { usePasskeyAuth } from '@/hooks/use-passkey-auth'
 import { useToast } from '@/hooks/use-toast'
-import { Camera,Image as ImageIcon,Lock,Save,User } from 'lucide-react'
+import { formatShortDate } from '@/lib/applications'
+import { cn } from '@/lib/utils'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useRef,useState } from 'react'
+import { useCallback,useEffect,useState } from 'react'
+
+interface Passkey {
+	id: string
+	name: string|null
+	deviceType: string|null
+	createdAt: string
+	lastUsed: string|null
+}
+
+const fieldClass=
+	'mt-2 w-full border border-br bg-transparent p-[13px] font-mono text-[13px] text-fg placeholder:text-dim focus:border-ac focus:outline-none'
+const labelClass='text-[11px] uppercase tracking-[.1em] text-dim'
+
+/** A bordered region with a small caps heading, optionally with a right-hand note. */
+function Panel ( {
+	title,
+	note,
+	children,
+	className,
+}: {
+	title: string
+	note?: React.ReactNode
+	children: React.ReactNode
+	className?: string
+} ) {
+	return (
+		<div className={cn( 'border border-br',className )}>
+			<div className="flex justify-between gap-3 border-b border-br px-5 py-4">
+				<span className="text-[10.5px] uppercase tracking-[.12em] text-dim">{title}</span>
+				{note&&<span className="text-[11.5px]">{note}</span>}
+			</div>
+			{children}
+		</div>
+	)
+}
 
 export default function ProfilePage () {
-	const { data: session,update }=useSession()
+	const { data: session,status,update }=useSession()
 	const router=useRouter()
 	const { toast }=useToast()
-	const fileInputRef=useRef<HTMLInputElement>( null )
+	const { isSupported,registerPasskey,setupMasterPassword }=usePasskeyAuth()
+	const { applications }=useApplications()
 
-	const [ isLoading,setIsLoading ]=useState( false )
-	const [ formData,setFormData ]=useState( {
-		name: session?.user?.name||'',
-		currentPassword: '',
-		newPassword: '',
-		confirmPassword: '',
-	} )
-	const [ profileImage,setProfileImage ]=useState<File|null>( null )
-	const [ previewUrl,setPreviewUrl ]=useState<string|null>( session?.user?.image||null )
+	const [ name,setName ]=useState( '' )
+	const [ isSaving,setIsSaving ]=useState( false )
+	const [ passkeys,setPasskeys ]=useState<Passkey[]|null>( null )
+	const [ isExportOpen,setIsExportOpen ]=useState( false )
+	const [ isChangingMaster,setIsChangingMaster ]=useState( false )
+	const [ masterPassword,setMasterPassword ]=useState( '' )
 
-	// Redirect if not authenticated
-	if ( !session?.user ) {
-		router.push( '/auth/signin' )
-		return null
-	}
+	useEffect( () => {
+		if ( session?.user?.name ) setName( session.user.name )
+	},[ session?.user?.name ] )
 
-	const handleInputChange=( field: string,value: string ) => {
-		setFormData( prev => ( {
-			...prev,
-			[ field ]: value
-		} ) )
-	}
+	useEffect( () => {
+		if ( status==='unauthenticated' ) router.push( '/auth/signin' )
+	},[ status,router ] )
 
-	const handleImageSelect=( event: React.ChangeEvent<HTMLInputElement> ) => {
-		const file=event.target.files?.[ 0 ]
-		if ( file ) {
-			// Validate file type
-			if ( !file.type.startsWith( 'image/' ) ) {
-				toast( {
-					title: 'Invalid file type',
-					description: 'Please select an image file (JPEG, PNG, etc.)',
-					variant: 'destructive',
-				} )
-				return
-			}
-
-			// Validate file size (max 5MB)
-			if ( file.size>5*1024*1024 ) {
-				toast( {
-					title: 'File too large',
-					description: 'Please select an image smaller than 5MB',
-					variant: 'destructive',
-				} )
-				return
-			}
-
-			setProfileImage( file )
-
-			// Create preview URL
-			const url=URL.createObjectURL( file )
-			setPreviewUrl( url )
-		}
-	}
-
-	const handleImageUpload=async (): Promise<string|null> => {
-		if ( !profileImage ) return null
-
+	const loadPasskeys=useCallback( async () => {
 		try {
-			// Create FormData for file upload
-			const formData=new FormData()
-			formData.append( 'file',profileImage )
-
-			// Upload to Cloudinary via our API endpoint
-			const response=await fetch( '/api/upload/image',{
-				method: 'POST',
-				body: formData,
-			} )
-
-			if ( !response.ok ) {
-				const errorData=await response.json()
-				throw new Error( errorData.error||'Failed to upload image' )
-			}
-
+			const response=await fetch( '/api/auth/passkey/list' )
+			if ( !response.ok ) throw new Error( 'Failed to fetch passkeys' )
 			const data=await response.json()
-			return data.secure_url
+			setPasskeys( data.passkeys??[] )
 		} catch ( error ) {
-			console.error( 'Error uploading image:',error )
-			toast( {
-				title: 'Image upload failed',
-				description: error instanceof Error? error.message:'Failed to upload profile image. Please try again.',
-				variant: 'destructive',
-			} )
-			return null
+			console.error( 'Error fetching passkeys:',error )
+			setPasskeys( [] )
 		}
-	}
+	},[] )
 
-	const handleSubmit=async ( e: React.FormEvent ) => {
-		e.preventDefault()
-		setIsLoading( true )
+	useEffect( () => {
+		if ( session?.user?.id ) loadPasskeys()
+	},[ session?.user?.id,loadPasskeys ] )
+
+	const handleSave=async ( event: React.FormEvent ) => {
+		event.preventDefault()
+		setIsSaving( true )
 
 		try {
-			// Validate passwords if changing
-			if ( formData.newPassword||formData.currentPassword ) {
-				if ( !formData.currentPassword ) {
-					toast( {
-						title: 'Current password required',
-						description: 'Please enter your current password to change it.',
-						variant: 'destructive',
-					} )
-					return
-				}
-
-				if ( formData.newPassword!==formData.confirmPassword ) {
-					toast( {
-						title: 'Passwords do not match',
-						description: 'New password and confirmation password must match.',
-						variant: 'destructive',
-					} )
-					return
-				}
-
-				if ( formData.newPassword.length<6 ) {
-					toast( {
-						title: 'Password too short',
-						description: 'New password must be at least 6 characters long.',
-						variant: 'destructive',
-					} )
-					return
-				}
-			}
-
-			// Upload image first if selected
-			let imageUrl=null
-			if ( profileImage ) {
-				imageUrl=await handleImageUpload()
-				if ( !imageUrl ) {
-					setIsLoading( false )
-					return
-				}
-			}
-
-			// Prepare update data
-			const updateData: any={
-				name: formData.name,
-			}
-
-			if ( imageUrl ) {
-				updateData.image=imageUrl
-			}
-
-			if ( formData.newPassword&&formData.currentPassword ) {
-				updateData.currentPassword=formData.currentPassword
-				updateData.newPassword=formData.newPassword
-			}
-
-			// Update profile via API
 			const response=await fetch( '/api/profile/update',{
 				method: 'PUT',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify( updateData ),
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify( { name } ),
 			} )
 
 			if ( !response.ok ) {
-				const errorData=await response.json()
-				throw new Error( errorData.error||'Failed to update profile' )
+				const data=await response.json()
+				throw new Error( data.error||'Failed to update profile' )
 			}
 
-			const updatedUser=await response.json()
-
-			// Update session
-			await update( {
-				...session,
-				user: {
-					...session.user,
-					name: updatedUser.name,
-					image: updatedUser.image,
-				},
-			} )
-
-			toast( {
-				title: 'Profile updated successfully!',
-				description: 'Your profile has been updated.',
-			} )
-
-			// Reset form
-			setFormData( {
-				name: updatedUser.name,
-				currentPassword: '',
-				newPassword: '',
-				confirmPassword: '',
-			} )
-			setProfileImage( null )
-			if ( fileInputRef.current ) {
-				fileInputRef.current.value=''
-			}
-
+			const updated=await response.json()
+			await update( { ...session,user: { ...session?.user,name: updated.name } } )
+			toast( { title: 'Profile updated',description: 'Your name has been saved.' } )
 		} catch ( error ) {
-			console.error( 'Error updating profile:',error )
 			toast( {
-				title: 'Update failed',
-				description: error instanceof Error? error.message:'Failed to update profile. Please try again.',
+				title: 'Could not save',
+				description: error instanceof Error? error.message:'Please try again.',
 				variant: 'destructive',
 			} )
 		} finally {
-			setIsLoading( false )
+			setIsSaving( false )
 		}
 	}
 
-	return (
-		<div className="min-h-screen p-6">
-			<div className="max-w-2xl mx-auto">
-				{/* Header */}
-				<div className="mb-8">
-					<h1 className="text-4xl font-bold text-gradient-heading">
-						Profile Settings
-					</h1>
-					<p className="text-violet-200/70 mt-2">
-						Update your personal information and account settings
-					</p>
-				</div>
+	const handleAddPasskey=async () => {
+		try {
+			await registerPasskey( session?.user?.email??undefined,session?.user?.name??undefined )
+			toast( { title: 'Passkey added',description: 'You can now sign in without typing.' } )
+			await loadPasskeys()
+		} catch ( error ) {
+			console.error( 'Passkey registration error:',error )
+			toast( {
+				title: 'Could not add passkey',
+				description: 'Your browser or device declined the request.',
+				variant: 'destructive',
+			} )
+		}
+	}
 
-				<Card className="glass-elevated">
-					<CardHeader>
-						<CardTitle className="text-white flex items-center space-x-2">
-							<User className="w-5 h-5" />
-							<span>Personal Information</span>
-						</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<form onSubmit={handleSubmit} className="space-y-6">
-							{/* Profile Picture Section */}
-							<div className="space-y-4">
-								<Label>Profile Picture</Label>
-								<div className="flex items-center space-x-4">
-									<div className="relative">
-										<div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center ring-2 ring-violet-500/30">
-											{previewUrl? (
-												<img
-													src={previewUrl}
-													alt="Profile"
-													className="w-full h-full object-cover"
-												/>
-											):(
-												<User className="w-12 h-12 text-white" />
-											)}
+	const handleRemovePasskey=async ( id: string ) => {
+		if ( !confirm( 'Remove this passkey? You will not be able to sign in with it again.' ) ) return
+
+		try {
+			const response=await fetch( `/api/auth/passkey/${id}`,{ method: 'DELETE' } )
+			if ( !response.ok ) throw new Error( 'Failed to remove passkey' )
+			await loadPasskeys()
+		} catch ( error ) {
+			console.error( 'Error removing passkey:',error )
+			toast( {
+				title: 'Could not remove passkey',
+				description: 'Please try again.',
+				variant: 'destructive',
+			} )
+		}
+	}
+
+	const handleChangeMaster=async ( event: React.FormEvent ) => {
+		event.preventDefault()
+
+		if ( masterPassword.length<12 ) {
+			toast( {
+				title: 'Too short',
+				description: 'A master password must be at least 12 characters.',
+				variant: 'destructive',
+			} )
+			return
+		}
+
+		try {
+			await setupMasterPassword( masterPassword )
+			setMasterPassword( '' )
+			setIsChangingMaster( false )
+			toast( { title: 'Master password changed',description: 'Keep it somewhere safe — it cannot be reset.' } )
+		} catch ( error ) {
+			console.error( 'Master password error:',error )
+			toast( {
+				title: 'Could not change it',
+				description: 'Please try again.',
+				variant: 'destructive',
+			} )
+		}
+	}
+
+	if ( status==='loading' ) {
+		return (
+			<div className="min-h-screen bg-bg px-8 pt-7 text-fg">
+				<div className="skeleton h-3 w-16" />
+				<div className="skeleton mt-3 h-[31px] w-64" />
+			</div>
+		)
+	}
+
+	if ( !session?.user ) return null
+
+	return (
+		<div className="min-h-screen bg-bg px-8 pt-7 pb-8 text-fg">
+			<DashboardHeader
+				eyebrow="profile"
+				title={session.user.name||session.user.email||'Your account'}
+				action={
+					<Button variant="ghost" className="border border-br" onClick={() => router.push( '/dashboard' )}>
+						← back to pipeline
+					</Button>
+				}
+			/>
+
+			<div className="mt-[26px] grid grid-cols-1 gap-[26px] lg:grid-cols-2">
+				<Panel title="account">
+					<form onSubmit={handleSave} className="flex flex-col gap-[18px] p-5">
+						<div>
+							<label htmlFor="name" className={labelClass}>name</label>
+							<input
+								id="name"
+								value={name}
+								onChange={event => setName( event.target.value )}
+								className={fieldClass}
+							/>
+						</div>
+
+						<div>
+							<div className={labelClass}>email</div>
+							<div className="mt-2 border border-br p-[13px] text-[13px] text-dim">
+								{session.user.email}
+							</div>
+						</div>
+
+						<div>
+							<div className={labelClass}>tracked</div>
+							<div className="mt-2 text-[13px] text-dim">
+								{applications.length} application{applications.length===1? '':'s'} logged
+							</div>
+						</div>
+
+						<Button type="submit" className="self-start" disabled={isSaving}>
+							{isSaving? 'saving…':'save changes'}
+						</Button>
+					</form>
+				</Panel>
+
+				<div className="flex flex-col gap-4">
+					<Panel
+						title="passkeys"
+						note={
+							<span className={passkeys?.length? 'text-ac':'text-dim'}>
+								{passkeys===null
+									? '…'
+									:`${passkeys.length} registered`}
+							</span>
+						}
+					>
+						<div className="px-5 pt-1.5 pb-4">
+							{passkeys===null? (
+								<div className="skeleton my-3.5 h-4 w-2/3" />
+							):passkeys.length===0? (
+								<div className="py-3.5 text-[12.5px] leading-[1.8] text-dim">
+									No passkeys yet. Adding one lets you sign in without typing a password.
+								</div>
+							):(
+								passkeys.map( ( passkey,index ) => (
+									<div
+										key={passkey.id}
+										className={cn(
+											'flex justify-between gap-4 py-3.5',
+											index<passkeys.length-1&&'row-rule'
+										)}
+									>
+										<div className="min-w-0">
+											<div className="truncate">{passkey.name||'Unnamed device'}</div>
+											<div className="mt-[5px] text-[11.5px] text-dim">
+												{( passkey.deviceType??'single_device' ).replace( '_','-' )} · added{' '}
+												{formatShortDate( passkey.createdAt )}
+												{passkey.lastUsed? ` · last used ${formatShortDate( passkey.lastUsed )}`:''}
+											</div>
 										</div>
+										<button
+											type="button"
+											onClick={() => handleRemovePasskey( passkey.id )}
+											className="flex-none self-start text-[12px] text-dim transition-colors hover:text-dg"
+										>
+											remove
+										</button>
+									</div>
+								) )
+							)}
+
+							{isSupported&&(
+								<Button variant="outline" className="mt-3.5" onClick={handleAddPasskey}>
+									+ add passkey
+								</Button>
+							)}
+						</div>
+					</Panel>
+
+					<Panel title="encryption">
+						<div className="px-5 py-[18px]">
+							<div className="text-[12.5px] leading-[1.8] text-dim">
+								Your applications and notes are encrypted with a key derived from your master
+								password. Changing it re-encrypts everything on this device.
+							</div>
+
+							{isChangingMaster? (
+								<form onSubmit={handleChangeMaster} className="mt-3.5">
+									<input
+										type="password"
+										value={masterPassword}
+										onChange={event => setMasterPassword( event.target.value )}
+										placeholder="new master password, 12+ characters"
+										autoComplete="new-password"
+										className={cn( fieldClass,'mt-0' )}
+									/>
+									<div className="mt-3 flex gap-2.5">
+										<Button type="submit" size="sm">save</Button>
 										<Button
 											type="button"
 											size="sm"
-											variant="outline"
-											className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full p-0"
-											onClick={() => fileInputRef.current?.click()}
+											variant="ghost"
+											className="border border-br"
+											onClick={() => {
+												setIsChangingMaster( false )
+												setMasterPassword( '' )
+											}}
 										>
-											<Camera className="w-4 h-4" />
+											cancel
 										</Button>
 									</div>
-									<div className="flex-1">
-										<input
-											ref={fileInputRef}
-											type="file"
-											accept="image/*"
-											onChange={handleImageSelect}
-											className="hidden"
-										/>
-										<Button
-											type="button"
-											variant="outline"
-											onClick={() => fileInputRef.current?.click()}
-										>
-											<ImageIcon className="w-4 h-4 mr-2" />
-											Choose Image
-										</Button>
-										<p className="text-sm text-violet-300/40 mt-1">
-											JPEG, PNG up to 5MB
-										</p>
-									</div>
-								</div>
-							</div>
-
-							{/* Name Section */}
-							<div className="space-y-2">
-								<Label htmlFor="name">Full Name</Label>
-								<Input
-									id="name"
-									type="text"
-									value={formData.name}
-									onChange={( e ) => handleInputChange( 'name',e.target.value )}
-									placeholder="Enter your full name"
-								/>
-							</div>
-
-							{/* Password Section */}
-							<div className="space-y-4">
-								<div className="flex items-center space-x-2">
-									<Lock className="w-5 h-5 text-violet-200" />
-									<Label>Change Password</Label>
-								</div>
-
-								<div className="space-y-2">
-									<Label htmlFor="currentPassword">Current Password</Label>
-									<Input
-										id="currentPassword"
-										type="password"
-										value={formData.currentPassword}
-										onChange={( e ) => handleInputChange( 'currentPassword',e.target.value )}
-										placeholder="Enter current password"
-									/>
-								</div>
-
-								<div className="space-y-2">
-									<Label htmlFor="newPassword">New Password</Label>
-									<Input
-										id="newPassword"
-										type="password"
-										value={formData.newPassword}
-										onChange={( e ) => handleInputChange( 'newPassword',e.target.value )}
-										placeholder="Enter new password"
-									/>
-								</div>
-
-								<div className="space-y-2">
-									<Label htmlFor="confirmPassword">Confirm New Password</Label>
-									<Input
-										id="confirmPassword"
-										type="password"
-										value={formData.confirmPassword}
-										onChange={( e ) => handleInputChange( 'confirmPassword',e.target.value )}
-										placeholder="Confirm new password"
-									/>
-								</div>
-							</div>
-
-							{/* Submit Button */}
-							<Button
-								type="submit"
-								disabled={isLoading}
-								className="w-full"
-							>
-								{isLoading? (
-									<>
-										<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-										Updating...
-									</>
-								):(
-									<>
-										<Save className="w-4 h-4 mr-2" />
-										Update Profile
-									</>
-								)}
-							</Button>
-						</form>
-					</CardContent>
-				</Card>
+								</form>
+							):(
+								<Button variant="outline" className="mt-3.5" onClick={() => setIsChangingMaster( true )}>
+									change master password
+								</Button>
+							)}
+						</div>
+					</Panel>
+				</div>
 			</div>
+
+			<div className="mt-[26px] grid grid-cols-1 border border-br lg:grid-cols-2">
+				<div className="border-b border-br p-5 lg:border-r lg:border-b-0">
+					<div className="text-[10.5px] uppercase tracking-[.12em] text-dim">your data</div>
+					<div className="mt-3 text-[12.5px] leading-[1.8] text-dim">
+						Export every application, company and document reference as CSV or JSON.
+					</div>
+					<div className="mt-3.5 flex flex-wrap gap-2.5">
+						<Button variant="outline" onClick={() => setIsExportOpen( true )}>export data</Button>
+					</div>
+				</div>
+
+				<div className="p-5">
+					<div className="text-[10.5px] uppercase tracking-[.12em] text-wn">danger zone</div>
+					<div className="mt-3 text-[12.5px] leading-[1.8] text-dim">
+						Deleting your account would remove all {applications.length} application
+						{applications.length===1? '':'s'} and everything attached to them. There is no endpoint
+						for this yet, so it has to be done by hand.
+					</div>
+					<Button variant="warning" className="mt-3.5" disabled title="No account-deletion endpoint exists">
+						delete account
+					</Button>
+				</div>
+			</div>
+
+			<ExportDataDialog open={isExportOpen} onOpenChange={setIsExportOpen} />
 		</div>
 	)
 }

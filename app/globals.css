@@ -23,6 +23,9 @@
 	/* danger is not in the source palette; this is the warm brick that fits it */
 	--dg: #a34d22;
 
+	/* Scrim behind modals — dark enough to separate in either theme. */
+	--scrim: rgba(31, 30, 27, .45);
+
 	/* Fill tones for legacy button and badge backgrounds. Deliberately the
 	   same in both themes: they always carry light text, so they have to stay
 	   dark enough for it whichever ground they sit on. */
@@ -48,6 +51,7 @@
 	--af: #171614;
 	--wn: #d8a24a;
 	--dg: #c2683f;
+	--scrim: rgba(0, 0, 0, .62);
 
 	color-scheme: dark;
 }
@@ -67,6 +71,7 @@
 		--af: #171614;
 		--wn: #d8a24a;
 		--dg: #c2683f;
+		--scrim: rgba(0, 0, 0, .62);
 
 		color-scheme: dark;
 	}
@@ -108,10 +113,13 @@
 	--animate-shimmer: shimmer 1.8s ease-in-out infinite;
 
 	/* ── Legacy palette remap ───────────────────────────────────
-	   Routes that have not been redesigned yet still reference the old violet
-	   and status palettes directly. Pointing those scales at the console
-	   tokens keeps them coherent without editing every file. Delete a block
-	   once the screens that depend on it are rebuilt from their design doc.
+	   Every page route is now built on the console tokens. What still reaches
+	   for the old violet and status palettes are the surfaces the design docs
+	   never covered: the dialogs in components/dashboard/, the primitives in
+	   components/ui/ that they use (dialog, select, textarea, checkbox, label,
+	   toast, loading-spinner), and the error / loading / not-found boundaries.
+	   Pointing those scales at the console tokens keeps them coherent without
+	   editing every file. Delete a block once its surfaces are rebuilt.
 
 	   The scales split by how the codebase actually uses them: shades ≤400 are
 	   text on the page background, so they resolve to theme-aware tokens that

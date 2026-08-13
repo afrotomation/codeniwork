@@ -72,7 +72,7 @@ There is no test suite configured.
 - UI components in `components/ui/` are shadcn/ui based (use `cn()` from `lib/utils.ts` for class merging)
 - Design tokens live in `app/globals.css`: `--bg --pn --br --fg --dim --ft --ac --af --wn`, exposed as Tailwind colours (`bg-bg`, `text-dim`, `border-br`, `text-ac`…). Theme is `data-theme` on `<html>`, defaulting to `prefers-color-scheme`
 - Pipeline derivations (next step, action queue, stats, calendar events) are centralised in `lib/applications.ts`; screens read one applications array via `hooks/use-applications.ts` and project it
-- `globals.css` also remaps the legacy violet/status Tailwind scales onto console tokens so routes not yet rebuilt from their design doc stay coherent. Delete a remap block once its screens are redesigned
+- `globals.css` also remaps the legacy violet/status Tailwind scales onto console tokens. Every page route is on the tokens directly now; the remap covers what the design docs never specified — the dialogs in `components/dashboard/`, the primitives they use (select, textarea, checkbox, label, toast, loading-spinner), and the error/loading/not-found boundaries. Delete a remap block once its surfaces are rebuilt
 - Dashboard components in `components/dashboard/` (dialogs, lists, stats, header)
 
 ### Path Aliases

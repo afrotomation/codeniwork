@@ -1,337 +1,253 @@
 'use client'
 
-import { DashboardHeader } from '@/components/dashboard/header'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { AddApplicationDialog } from '@/components/dashboard/add-application-dialog'
-import { UploadDocumentDialog } from '@/components/dashboard/upload-document-dialog'
-import { ScheduleFollowupDialog } from '@/components/dashboard/schedule-followup-dialog'
 import { ExportDataDialog } from '@/components/dashboard/export-data-dialog'
+import { DashboardHeader } from '@/components/dashboard/header'
 import { RecentActivity } from '@/components/dashboard/recent-activity'
-import {
-	Calendar,
-	ExternalLink,
-	FileText,
-	Plus,
-	TrendingUp,
-	Zap,
-	Target,
-	Briefcase,
-	UserPlus,
-	Send,
-	RefreshCw
-} from 'lucide-react'
-import { useState } from 'react'
+import { ScheduleFollowupDialog } from '@/components/dashboard/schedule-followup-dialog'
+import { UploadDocumentDialog } from '@/components/dashboard/upload-document-dialog'
+import { useToast } from '@/hooks/use-toast'
+import { cn } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
+import { useEffect,useMemo,useRef,useState } from 'react'
 
-// Quick action categories with enhanced functionality
-const quickActions = [
+type CommandId=
+	|'add-application'
+	|'view-applications'
+	|'update-status'
+	|'upload-resume'
+	|'create-cover-letter'
+	|'update-portfolio'
+	|'add-contact'
+	|'schedule-followup'
+	|'send-thankyou'
+	|'view-analytics'
+	|'export-data'
+	|'auto-reject'
+
+interface Command {
+	id: CommandId
+	title: string
+	description: string
+	shortcut: string
+	/** Commands with nothing behind them yet are listed but not offered. */
+	disabled?: boolean
+}
+
+const groups: { label: string; commands: Command[] }[]=[
 	{
-		category: 'Applications',
-		actions: [
-			{
-				title: 'Add New Application',
-				description: 'Track a new job application',
-				icon: Plus,
-				color: 'from-blue-500 to-blue-600',
-				action: 'add-application',
-				shortcut: 'Ctrl + N'
-			},
-			{
-				title: 'View Applications',
-				description: 'See all your applications',
-				icon: Briefcase,
-				color: 'from-green-500 to-green-600',
-				action: 'navigate',
-				href: '/dashboard/applications',
-				shortcut: 'Ctrl + A'
-			},
-			{
-				title: 'Update Status',
-				description: 'Update application progress',
-				icon: TrendingUp,
-				color: 'from-purple-500 to-purple-600',
-				action: 'navigate',
-				href: '/dashboard/applications',
-				shortcut: 'Ctrl + U'
-			}
-		]
+		label: 'applications',
+		commands: [
+			{ id: 'add-application',title: 'Add new application',description: 'Track a new job application',shortcut: '⌘N' },
+			{ id: 'view-applications',title: 'View applications',description: 'See all your applications',shortcut: '⌘A' },
+			{ id: 'update-status',title: 'Update status',description: 'Move an application forward',shortcut: '⌘U' },
+		],
 	},
 	{
-		category: 'Documents',
-		actions: [
-			{
-				title: 'Upload Resume',
-				description: 'Add new resume version',
-				icon: FileText,
-				color: 'from-orange-500 to-orange-600',
-				action: 'upload-document',
-				documentType: 'resume',
-				shortcut: 'Ctrl + R'
-			},
-			{
-				title: 'Create Cover Letter',
-				description: 'Write a new cover letter',
-				icon: FileText,
-				color: 'from-pink-500 to-pink-600',
-				action: 'upload-document',
-				documentType: 'cover_letter',
-				shortcut: 'Ctrl + L'
-			},
-			{
-				title: 'Update Portfolio',
-				description: 'Refresh your portfolio',
-				icon: FileText,
-				color: 'from-indigo-500 to-indigo-600',
-				action: 'upload-document',
-				documentType: 'portfolio',
-				shortcut: 'Ctrl + P'
-			}
-		]
+		label: 'documents',
+		commands: [
+			{ id: 'upload-resume',title: 'Upload resume',description: 'Add a new resume version',shortcut: '⌘R' },
+			{ id: 'create-cover-letter',title: 'Create cover letter',description: 'Write or generate a new one',shortcut: '⌘L' },
+			{ id: 'update-portfolio',title: 'Update portfolio',description: 'Refresh your portfolio file',shortcut: '⌘P' },
+		],
 	},
 	{
-		category: 'Networking',
-		actions: [
-			{
-				title: 'Add New Contact',
-				description: 'Save a new connection',
-				icon: UserPlus,
-				color: 'from-teal-500 to-teal-600',
-				action: 'navigate',
-				href: '/dashboard/contacts',
-				shortcut: 'Ctrl + C'
-			},
-			{
-				title: 'Schedule Follow-up',
-				description: 'Set reminder for contact',
-				icon: Calendar,
-				color: 'from-cyan-500 to-cyan-600',
-				action: 'schedule-followup',
-				shortcut: 'Ctrl + F'
-			},
-			{
-				title: 'Send Thank You',
-				description: 'Follow up after interview',
-				icon: Send,
-				color: 'from-emerald-500 to-emerald-600',
-				action: 'send-thankyou',
-				shortcut: 'Ctrl + T'
-			}
-		]
+		label: 'networking',
+		commands: [
+			{ id: 'add-contact',title: 'Add new contact',description: 'Needs a contacts table',shortcut: '⌘C',disabled: true },
+			{ id: 'schedule-followup',title: 'Schedule follow-up',description: 'Set a reminder for a contact',shortcut: '⌘F' },
+			{ id: 'send-thankyou',title: 'Send thank you',description: 'Follow up after an interview',shortcut: '⌘T' },
+		],
 	},
 	{
-		category: 'Analytics & Tools',
-		actions: [
-			{
-				title: 'View Analytics',
-				description: 'Track your progress',
-				icon: Target,
-				color: 'from-red-500 to-red-600',
-				action: 'navigate',
-				href: '/dashboard/analytics',
-				shortcut: 'Ctrl + G'
-			},
-			{
-				title: 'Export Data',
-				description: 'Download your data',
-				icon: FileText,
-				color: 'from-yellow-500 to-yellow-600',
-				action: 'export-data',
-				shortcut: 'Ctrl + E'
-			},
-			{
-				title: 'Refresh Data',
-				description: 'Update all information',
-				icon: RefreshCw,
-				color: 'from-gray-500 to-gray-600',
-				action: 'refresh-data',
-				shortcut: 'Ctrl + R'
-			},
-			{
-				title: 'Auto-Reject Old Apps',
-				description: 'Close applications silent for 21 days',
-				icon: RefreshCw,
-				color: 'from-orange-500 to-orange-600',
-				action: 'auto-reject'
-			}
-		]
-	}
+		label: 'analytics & tools',
+		commands: [
+			{ id: 'view-analytics',title: 'View analytics',description: 'Track your progress',shortcut: '⌘G' },
+			{ id: 'export-data',title: 'Export data',description: 'Download everything as CSV or JSON',shortcut: '⌘E' },
+			{ id: 'auto-reject',title: 'Auto-reject old applications',description: 'Close anything silent for 21 days',shortcut: '⌘J' },
+		],
+	},
 ]
 
-export default function QuickActionsPage() {
-	const router = useRouter()
-	const [isAddApplicationOpen, setIsAddApplicationOpen] = useState(false)
-	const [isUploadDocumentOpen, setIsUploadDocumentOpen] = useState(false)
-	const [isScheduleFollowupOpen, setIsScheduleFollowupOpen] = useState(false)
-	const [isExportDataOpen, setIsExportDataOpen] = useState(false)
-	const [documentType, setDocumentType] = useState('')
-	const [isRefreshing, setIsRefreshing] = useState(false)
+export default function QuickActionsPage () {
+	const router=useRouter()
+	const { toast }=useToast()
+	const [ query,setQuery ]=useState( '' )
+	const inputRef=useRef<HTMLInputElement>( null )
 
-	// Handle action clicks
-	const handleActionClick = (action: any) => {
-		switch (action.action) {
+	const [ isAddOpen,setIsAddOpen ]=useState( false )
+	const [ isUploadOpen,setIsUploadOpen ]=useState( false )
+	const [ uploadType,setUploadType ]=useState<string|undefined>( undefined )
+	const [ isFollowupOpen,setIsFollowupOpen ]=useState( false )
+	const [ isExportOpen,setIsExportOpen ]=useState( false )
+
+	// ⌘K focuses the command line from anywhere on this screen.
+	useEffect( () => {
+		const onKeyDown=( event: KeyboardEvent ) => {
+			if ( ( event.metaKey||event.ctrlKey )&&event.key==='k' ) {
+				event.preventDefault()
+				inputRef.current?.focus()
+				return
+			}
+			if ( event.key==='Escape' ) inputRef.current?.blur()
+		}
+
+		window.addEventListener( 'keydown',onKeyDown )
+		return () => window.removeEventListener( 'keydown',onKeyDown )
+	},[] )
+
+	const runAutoReject=async () => {
+		try {
+			const response=await fetch( '/api/dashboard/applications/auto-reject',{ method: 'POST' } )
+			if ( !response.ok ) throw new Error( 'Failed to run auto-rejection' )
+
+			const result=await response.json()
+			toast( {
+				title: 'Auto-rejection complete',
+				description: `${result.rejectedCount} application${result.rejectedCount===1? '':'s'} closed.`,
+			} )
+		} catch ( error ) {
+			console.error( 'Error running auto-rejection:',error )
+			toast( {
+				title: 'Auto-rejection failed',
+				description: 'Check the console for details.',
+				variant: 'destructive',
+			} )
+		}
+	}
+
+	const run=async ( id: CommandId ) => {
+		switch ( id ) {
 			case 'add-application':
-				setIsAddApplicationOpen(true)
+				setIsAddOpen( true )
 				break
-			case 'upload-document':
-				setDocumentType(action.documentType)
-				setIsUploadDocumentOpen(true)
+			case 'view-applications':
+			case 'update-status':
+				router.push( '/dashboard/applications' )
+				break
+			case 'upload-resume':
+				setUploadType( 'resume' )
+				setIsUploadOpen( true )
+				break
+			case 'create-cover-letter':
+				router.push( '/dashboard/ai-tools' )
+				break
+			case 'update-portfolio':
+				setUploadType( 'portfolio' )
+				setIsUploadOpen( true )
 				break
 			case 'schedule-followup':
-				setIsScheduleFollowupOpen(true)
+				setIsFollowupOpen( true )
 				break
 			case 'send-thankyou':
-				// Navigate to applications to send thank you
-				router.push('/dashboard/applications')
+				router.push( '/dashboard/contacts' )
+				break
+			case 'view-analytics':
+				router.push( '/dashboard/analytics' )
 				break
 			case 'export-data':
-				setIsExportDataOpen(true)
-				break
-			case 'refresh-data':
-				handleRefreshData()
+				setIsExportOpen( true )
 				break
 			case 'auto-reject':
-				handleAutoReject()
-				break
-			case 'navigate':
-				if (action.href) {
-					router.push(action.href)
-				}
+				await runAutoReject()
 				break
 			default:
 				break
 		}
 	}
 
-	// Close out applications that have been silent past the auto-reject window.
-	const handleAutoReject = async () => {
-		try {
-			const response = await fetch('/api/dashboard/applications/auto-reject', {
-				method: 'POST'
-			})
-			if (!response.ok) {
-				throw new Error('Failed to run auto-rejection')
-			}
-			const result = await response.json()
-			alert(`Auto-rejection completed: ${result.rejectedCount} applications processed`)
-		} catch (error) {
-			console.error('Error running auto-rejection:', error)
-			alert('Error running auto-rejection. Check console for details.')
-		}
-	}
+	const filtered=useMemo( () => {
+		const needle=query.trim().toLowerCase()
+		if ( !needle ) return groups
 
-	// Handle data refresh
-	const handleRefreshData = async () => {
-		setIsRefreshing(true)
-		try {
-			// Refresh the page to get latest data
-			window.location.reload()
-		} catch (error) {
-			console.error('Error refreshing data:', error)
-		} finally {
-			setIsRefreshing(false)
-		}
-	}
+		return groups
+			.map( group => ( {
+				...group,
+				commands: group.commands.filter( command =>
+					`${command.title} ${command.description} ${group.label}`.toLowerCase().includes( needle )
+				),
+			} ) )
+			.filter( group => group.commands.length>0 )
+	},[ query ] )
 
-	// Handle document upload success
-	const handleDocumentUploaded = async () => {
-		setIsUploadDocumentOpen(false)
-		setDocumentType('')
-	}
-
-	// Handle application added success
-	const handleApplicationAdded = async () => {
-		setIsAddApplicationOpen(false)
-	}
+	const columns=[
+		filtered.filter( ( _,index ) => index%2===0 ),
+		filtered.filter( ( _,index ) => index%2===1 ),
+	]
 
 	return (
-		<div className="min-h-screen">
-			<DashboardHeader />
-			<div className="p-6">
-				<div className="mb-8">
-					<h1 className="text-4xl font-bold text-gradient-heading mb-2">Quick Actions</h1>
-					<p className="text-violet-300/60">Fast access to common tasks and shortcuts</p>
-				</div>
+		<div>
+			<DashboardHeader eyebrow="quick actions" title="Everything by keystroke" />
 
-				{/* Quick Actions Grid */}
-				<div className="space-y-8 mb-8">
-					{quickActions.map((category) => (
-						<div key={category.category}>
-							<h2 className="text-xl font-semibold text-white mb-4 flex items-center space-x-2">
-								<Zap className="w-5 h-5 text-yellow-400" />
-								<span>{category.category}</span>
-								<div className="flex-1 h-px bg-gradient-to-r from-white/[0.10] to-transparent ml-4" />
-							</h2>
-							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-								{category.actions.map((action, index) => {
-									const Icon = action.icon
-									return (
-										<Card key={action.title} className="glass glass-interactive cursor-pointer animate-fade-up" style={{ animationDelay: `${index * 80}ms` }}>
-											<CardContent className="p-6">
-												<div className="flex items-start justify-between mb-4">
-													<div className={`w-12 h-12 bg-gradient-to-br ${action.color} rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200`}>
-														<Icon className="w-6 h-6 text-white" />
-													</div>
-													<Badge variant="secondary" className="text-xs">
-														{action.shortcut}
-													</Badge>
-												</div>
-												<h3 className="text-white font-medium mb-2">
-													{action.title}
-												</h3>
-												<p className="text-violet-200/70 text-sm mb-4">
-													{action.description}
-												</p>
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => handleActionClick(action)}
-													className="w-full text-violet-200/70 hover:text-white hover:bg-white/[0.06]"
-												>
-													{action.action === 'refresh-data' && isRefreshing ? (
-														<RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-													) : (
-														<ExternalLink className="w-4 h-4 mr-2" />
-													)}
-													{action.action === 'refresh-data' && isRefreshing ? 'Refreshing...' : `Go to ${action.title}`}
-												</Button>
-											</CardContent>
-										</Card>
-									)
-								})}
-							</div>
-						</div>
-					))}
-				</div>
-
-				{/* Recent Activities */}
-				<RecentActivity />
-
-				{/* Dialogs */}
-				<AddApplicationDialog
-					open={isAddApplicationOpen}
-					onOpenChange={setIsAddApplicationOpen}
-					onApplicationAdded={handleApplicationAdded}
-				/>
-
-				<UploadDocumentDialog
-					open={isUploadDocumentOpen}
-					onOpenChange={setIsUploadDocumentOpen}
-					onDocumentUploaded={handleDocumentUploaded}
-					presetDocumentType={documentType}
-				/>
-
-				<ScheduleFollowupDialog
-					open={isScheduleFollowupOpen}
-					onOpenChange={setIsScheduleFollowupOpen}
-				/>
-
-				<ExportDataDialog
-					open={isExportDataOpen}
-					onOpenChange={setIsExportDataOpen}
+			<div className="mt-6 flex items-center border border-br">
+				<span className="border-r border-br px-3.5 py-[13px] text-ac">⌘K</span>
+				<input
+					ref={inputRef}
+					value={query}
+					onChange={event => setQuery( event.target.value )}
+					placeholder="type a command…"
+					spellCheck={false}
+					aria-label="Filter commands"
+					className="flex-1 bg-transparent px-3.5 py-[13px] font-mono text-[13px] text-fg placeholder:text-dim focus:outline-none"
 				/>
 			</div>
+
+			{filtered.length===0? (
+				<div className="mt-[26px] border border-br py-10 text-center text-[12.5px] text-dim">
+					No command matches that.
+				</div>
+			):(
+				<div className="mt-[26px] grid grid-cols-1 gap-[26px] lg:grid-cols-2">
+					{columns.map( ( column,columnIndex ) => (
+						<div key={columnIndex}>
+							{column.map( ( group,groupIndex ) => (
+								<div key={group.label} className={groupIndex>0? 'mt-[26px]':undefined}>
+									<div className="text-[10.5px] uppercase tracking-[.12em] text-dim">
+										{group.label}
+									</div>
+									<div className="mt-3 border-t border-br">
+										{group.commands.map( command => (
+											<button
+												key={command.id}
+												type="button"
+												disabled={command.disabled}
+												onClick={() => run( command.id )}
+												title={command.disabled? command.description:undefined}
+												className={cn(
+													'row-rule flex w-full justify-between gap-4 py-3.5 text-left transition-colors',
+													command.disabled? 'cursor-not-allowed opacity-45':'hover:bg-ft'
+												)}
+											>
+												<span>
+													<span className="block text-[13px]">{command.title}</span>
+													<span className="mt-[5px] block text-[11.5px] text-dim">
+														{command.description}
+													</span>
+												</span>
+												<span className="flex-none self-center text-[12px] text-dim">
+													{command.shortcut}
+												</span>
+											</button>
+										) )}
+									</div>
+								</div>
+							) )}
+						</div>
+					) )}
+				</div>
+			)}
+
+			<RecentActivity limit={5} />
+
+			<AddApplicationDialog open={isAddOpen} onOpenChange={setIsAddOpen} />
+			<UploadDocumentDialog
+				open={isUploadOpen}
+				onOpenChange={setIsUploadOpen}
+				onDocumentUploaded={async () => {}}
+				presetDocumentType={uploadType}
+			/>
+			<ScheduleFollowupDialog open={isFollowupOpen} onOpenChange={setIsFollowupOpen} />
+			<ExportDataDialog open={isExportOpen} onOpenChange={setIsExportOpen} />
 		</div>
 	)
 }

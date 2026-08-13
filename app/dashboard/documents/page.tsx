@@ -1,16 +1,14 @@
 'use client'
 
-import { DashboardHeader } from '@/components/dashboard/header'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DocumentViewerModal } from '@/components/dashboard/document-viewer-modal'
 import { EditDocumentDialog } from '@/components/dashboard/edit-document-dialog'
-import { LoadingSpinner } from '@/components/ui/loading-spinner'
+import { DashboardHeader } from '@/components/dashboard/header'
 import { UploadDocumentDialog } from '@/components/dashboard/upload-document-dialog'
-import { Calendar, Download, Edit, Eye, File, FileText, Plus, Trash2, RefreshCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
+import { formatShortDate } from '@/lib/applications'
+import { cn } from '@/lib/utils'
+import { useEffect,useMemo,useState } from 'react'
 
 interface Document {
 	id: string
@@ -26,360 +24,313 @@ interface Document {
 	updatedAt: string
 }
 
-export default function DocumentsPage() {
-	const { toast } = useToast()
-	const [documents, setDocuments] = useState<Document[]>([])
-	const [isLoading, setIsLoading] = useState(true)
-	const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
-	const [viewingDocument, setViewingDocument] = useState<Document | null>(null)
-	const [editingDocument, setEditingDocument] = useState<Document | null>(null)
-	const [isViewerOpen, setIsViewerOpen] = useState(false)
-	const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+/** Design column rhythm: name, type, format, size, version, updated, status. */
+const COLUMNS='grid-cols-[1fr_132px_84px_80px_78px_96px_104px]'
 
-	useEffect(() => {
+const TYPE_FILTERS: { label: string; type: string|null }[]=[
+	{ label: 'resumes',type: 'resume' },
+	{ label: 'cover letters',type: 'cover_letter' },
+	{ label: 'portfolios',type: 'portfolio' },
+	{ label: 'certificates',type: 'certificate' },
+	{ label: 'other',type: 'other' },
+]
+
+/** "248 KB" / "1.6 MB" → bytes, so the header can total them. */
+function parseSize ( size: string|null|undefined ): number {
+	if ( !size ) return 0
+	const match=/^([\d.]+)\s*(B|KB|MB|GB)$/i.exec( size.trim() )
+	if ( !match ) return 0
+	const scale: Record<string,number>={ b: 1,kb: 1024,mb: 1024**2,gb: 1024**3 }
+	return parseFloat( match[ 1 ] )*( scale[ match[ 2 ].toLowerCase() ]??1 )
+}
+
+function formatBytes ( bytes: number ): string {
+	if ( bytes<1024 ) return `${Math.round( bytes )} B`
+	if ( bytes<1024**2 ) return `${Math.round( bytes/1024 )} KB`
+	return `${( bytes/1024**2 ).toFixed( 1 )} MB`
+}
+
+export default function DocumentsPage () {
+	const { toast }=useToast()
+	const [ documents,setDocuments ]=useState<Document[]>( [] )
+	const [ isLoading,setIsLoading ]=useState( true )
+	const [ filter,setFilter ]=useState<string|null>( null )
+	const [ selectedId,setSelectedId ]=useState<string|null>( null )
+	const [ isUploadOpen,setIsUploadOpen ]=useState( false )
+	const [ viewing,setViewing ]=useState<Document|null>( null )
+	const [ editing,setEditing ]=useState<Document|null>( null )
+
+	useEffect( () => {
 		fetchDocuments()
-	}, [])
+	},[] )
 
-	const fetchDocuments = async () => {
+	const fetchDocuments=async () => {
 		try {
-			const response = await fetch('/api/dashboard/documents')
-			if (!response.ok) {
-				throw new Error('Failed to fetch documents')
-			}
-			const data = await response.json()
-			setDocuments(data)
-		} catch (error) {
-			console.error('Error fetching documents:', error)
-			toast({
+			const response=await fetch( '/api/dashboard/documents' )
+			if ( !response.ok ) throw new Error( 'Failed to fetch documents' )
+			setDocuments( await response.json() )
+		} catch ( error ) {
+			console.error( 'Error fetching documents:',error )
+			toast( {
 				title: 'Error',
 				description: 'Failed to fetch documents. Please try again.',
 				variant: 'destructive',
-			})
+			} )
 		} finally {
-			setIsLoading(false)
+			setIsLoading( false )
 		}
 	}
 
-	const handleDocumentUploaded = async () => {
-		await fetchDocuments()
-	}
+	const selected=documents.find( doc => doc.id===selectedId )??null
 
-	const handleDocumentUpdated = async () => {
-		await fetchDocuments()
-	}
+	// U uploads, V views the selected row.
+	useEffect( () => {
+		const onKeyDown=( event: KeyboardEvent ) => {
+			if ( event.metaKey||event.ctrlKey||event.altKey ) return
 
-	const handleViewDocument = (document: Document) => {
-		setViewingDocument(document)
-		setIsViewerOpen(true)
-	}
+			const target=event.target as HTMLElement|null
+			if ( target?.isContentEditable ) return
+			if ( target&&/^(INPUT|TEXTAREA|SELECT)$/.test( target.tagName ) ) return
 
-	const handleEditDocument = (document: Document) => {
-		setEditingDocument(document)
-		setIsEditDialogOpen(true)
-	}
-
-	const handleDeleteDocument = async (document: Document) => {
-		if (!confirm(`Are you sure you want to delete "${document.name}"?`)) {
-			return
+			if ( event.key==='u'||event.key==='U' ) {
+				event.preventDefault()
+				setIsUploadOpen( true )
+			} else if ( ( event.key==='v'||event.key==='V' )&&selected ) {
+				event.preventDefault()
+				setViewing( selected )
+			}
 		}
+
+		window.addEventListener( 'keydown',onKeyDown )
+		return () => window.removeEventListener( 'keydown',onKeyDown )
+	},[ selected ] )
+
+	const handleDelete=async ( doc: Document ) => {
+		if ( !confirm( `Are you sure you want to delete "${doc.name}"?` ) ) return
 
 		try {
-			const response = await fetch(`/api/dashboard/documents/${document.id}`, {
-				method: 'DELETE',
-			})
+			const response=await fetch( `/api/dashboard/documents/${doc.id}`,{ method: 'DELETE' } )
+			if ( !response.ok ) throw new Error( 'Failed to delete document' )
 
-			if (!response.ok) {
-				throw new Error('Failed to delete document')
-			}
-
-			toast({
-				title: 'Success!',
-				description: 'Document deleted successfully.',
-			})
-
+			toast( { title: 'Success!',description: 'Document deleted successfully.' } )
+			if ( selectedId===doc.id ) setSelectedId( null )
 			await fetchDocuments()
-		} catch (error) {
-			console.error('Error deleting document:', error)
-			toast({
+		} catch ( error ) {
+			console.error( 'Error deleting document:',error )
+			toast( {
 				title: 'Error',
 				description: 'Failed to delete document. Please try again.',
 				variant: 'destructive',
-			})
+			} )
 		}
 	}
 
-	const handleDownload = async (doc: Document) => {
+	const handleDownload=async ( doc: Document ) => {
 		try {
-			const response = await fetch(doc.fileUrl)
-			const blob = await response.blob()
-			const url = window.URL.createObjectURL(blob)
-			const a = document.createElement('a')
-			a.href = url
-			a.download = doc.name
-			document.body.appendChild(a)
-			a.click()
-			window.URL.revokeObjectURL(url)
-			document.body.removeChild(a)
-		} catch (error) {
-			console.error('Error downloading document:', error)
-			toast({
+			const response=await fetch( doc.fileUrl )
+			const blob=await response.blob()
+			const url=window.URL.createObjectURL( blob )
+			const anchor=window.document.createElement( 'a' )
+			anchor.href=url
+			anchor.download=doc.name
+			window.document.body.appendChild( anchor )
+			anchor.click()
+			window.URL.revokeObjectURL( url )
+			window.document.body.removeChild( anchor )
+		} catch ( error ) {
+			console.error( 'Error downloading document:',error )
+			toast( {
 				title: 'Download failed',
 				description: 'Failed to download document. Please try again.',
 				variant: 'destructive',
-			})
+			} )
 		}
 	}
 
-	const getTypeIcon = (type: string) => {
-		switch (type) {
-			case 'resume':
-				return <FileText className="w-5 h-5" />
-			case 'cover_letter':
-				return <File className="w-5 h-5" />
-			case 'portfolio':
-				return <FileText className="w-5 h-5" />
-			case 'certificate':
-				return <FileText className="w-5 h-5" />
-			default:
-				return <File className="w-5 h-5" />
-		}
-	}
-
-	const getStatusColor = (status: string) => {
-		switch (status) {
-			case 'active':
-				return 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30'
-			case 'archived':
-				return 'bg-white/[0.06] text-violet-200/70 border-white/[0.10]'
-			case 'template':
-				return 'bg-blue-500/15 text-blue-300 border-blue-400/30'
-			default:
-				return 'bg-white/[0.06] text-violet-200/70 border-white/[0.10]'
-		}
-	}
-
-	const formatDate = (dateString: string) => {
-		return new Date(dateString).toLocaleDateString('en-US', {
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric'
-		})
-	}
-
-	// Calculate document counts by type
-	const getDocumentCounts = () => {
-		const counts = documents.reduce((acc, doc) => {
-			acc[doc.type] = (acc[doc.type] || 0) + 1
+	const counts=useMemo( () => {
+		const byType=documents.reduce( ( acc,doc ) => {
+			acc[ doc.type ]=( acc[ doc.type ]||0 )+1
 			return acc
-		}, {} as Record<string, number>)
-
+		},{} as Record<string,number> )
 		return {
-			resume: counts.resume || 0,
-			cover_letter: counts.cover_letter || 0,
-			portfolio: counts.portfolio || 0,
-			certificate: counts.certificate || 0,
-			other: counts.other || 0,
+			byType,
+			archived: documents.filter( doc => doc.status==='archived' ).length,
 		}
-	}
+	},[ documents ] )
 
-	const documentCounts = getDocumentCounts()
+	const rows=useMemo( () => {
+		if ( filter===null ) return documents
+		if ( filter==='archived' ) return documents.filter( doc => doc.status==='archived' )
+		return documents.filter( doc => doc.type===filter )
+	},[ documents,filter ] )
 
-	if (isLoading) {
-		return (
-			<div className="min-h-screen">
-				<DashboardHeader />
-				<div className="p-6">
-					<div className="flex items-center justify-center h-64">
-						<LoadingSpinner />
-					</div>
-				</div>
-			</div>
-		)
-	}
+	const totalBytes=documents.reduce( ( sum,doc ) => sum+parseSize( doc.size ),0 )
 
 	return (
-		<div className="min-h-screen">
-			<DashboardHeader />
-			<div className="p-6">
-				<div className="mb-8">
-					<div className="flex items-center justify-between">
-						<div>
-							<h1 className="text-4xl font-bold text-gradient-heading mb-2">Documents</h1>
-							<p className="text-violet-300/60">Manage your resumes, cover letters, and portfolios</p>
+		<div>
+			<DashboardHeader
+				eyebrow="documents"
+				title={
+					isLoading
+						? 'Loading documents'
+						:`${documents.length} file${documents.length===1? '':'s'}, ${formatBytes( totalBytes )}`
+				}
+				align="end"
+				action={
+					<div className="flex gap-2.5">
+						<Button variant="ghost" className="border border-br" onClick={fetchDocuments}>
+							refresh
+						</Button>
+						<Button onClick={() => setIsUploadOpen( true )} shortcut="U">
+							+ upload
+						</Button>
+					</div>
+				}
+			/>
+
+			<div className="mt-6 flex flex-wrap gap-2">
+				<button
+					type="button"
+					onClick={() => setFilter( null )}
+					className={cn(
+						'border px-3 py-[7px] text-[11.5px] transition-colors',
+						filter===null? 'border-ac text-ac':'border-br text-dim hover:border-ac hover:text-ac'
+					)}
+				>
+					all {documents.length}
+				</button>
+				{TYPE_FILTERS.filter( item => ( counts.byType[ item.type! ]??0 )>0 ).map( item => (
+					<button
+						key={item.type}
+						type="button"
+						onClick={() => setFilter( item.type )}
+						className={cn(
+							'border px-3 py-[7px] text-[11.5px] transition-colors',
+							filter===item.type? 'border-ac text-ac':'border-br text-dim hover:border-ac hover:text-ac'
+						)}
+					>
+						{item.label} {counts.byType[ item.type! ]}
+					</button>
+				) )}
+				{counts.archived>0&&(
+					<button
+						type="button"
+						onClick={() => setFilter( 'archived' )}
+						className={cn(
+							'border px-3 py-[7px] text-[11.5px] transition-colors',
+							filter==='archived'? 'border-ac text-ac':'border-br text-dim hover:border-ac hover:text-ac'
+						)}
+					>
+						archived {counts.archived}
+					</button>
+				)}
+			</div>
+
+			<div className={cn( 'label mt-[26px] grid border-b border-br pb-2.5',COLUMNS )}>
+				<div>name</div>
+				<div>type</div>
+				<div>format</div>
+				<div>size</div>
+				<div>version</div>
+				<div>updated</div>
+				<div>status</div>
+			</div>
+
+			{isLoading? (
+				Array.from( { length: 5 } ).map( ( _,i ) => (
+					<div key={i} className={cn( 'row-rule grid items-center py-4',COLUMNS )}>
+						<div className="skeleton h-4 w-2/3" />
+						<div className="skeleton h-3 w-16" />
+						<div className="skeleton h-3 w-10" />
+						<div className="skeleton h-3 w-12" />
+						<div className="skeleton h-3 w-8" />
+						<div className="skeleton h-3 w-12" />
+						<div className="skeleton h-3 w-12" />
+					</div>
+				) )
+			):rows.length===0? (
+				<div className="border-b border-br py-10 text-center text-[12.5px] text-dim">
+					{documents.length===0
+						? 'No documents yet. Upload a resume to start.'
+						:'Nothing in that category.'}
+				</div>
+			):(
+				rows.map( doc => {
+					const isArchived=doc.status==='archived'
+					return (
+						<button
+							key={doc.id}
+							type="button"
+							onClick={() => setSelectedId( doc.id )}
+							onDoubleClick={() => setViewing( doc )}
+							className={cn(
+								'row-rule grid w-full items-center py-4 text-left text-[13px] transition-colors',
+								COLUMNS,
+								isArchived&&'opacity-50',
+								selectedId===doc.id? 'bg-ft':'hover:bg-ft'
+							)}
+						>
+							<div className="truncate pr-4">
+								<span className="display text-[14px] text-fg">{doc.name}</span>
+								{doc.description&&(
+									<div className="mt-[5px] truncate text-[11.5px] text-dim">{doc.description}</div>
+								)}
+							</div>
+							<div className="text-dim">{doc.type.replace( '_',' ' )}</div>
+							<div className="text-dim">{doc.format}</div>
+							<div className="text-dim">{doc.size||'—'}</div>
+							<div className="text-fg">{doc.version}</div>
+							<div className="text-dim">{formatShortDate( doc.updatedAt )}</div>
+							<div className={doc.status==='active'? 'text-ac':'text-dim'}>{doc.status}</div>
+						</button>
+					)
+				} )
+			)}
+
+			{selected&&(
+				<div className="mt-[22px] flex flex-col gap-4 border border-br px-5 py-[18px] lg:flex-row lg:items-center lg:gap-5">
+					<div className="min-w-0 flex-1">
+						<div className="truncate text-[10.5px] uppercase tracking-[.12em] text-dim">
+							selected — {selected.name}
 						</div>
-						<div className="flex items-center space-x-3">
-							<Button
-								onClick={fetchDocuments}
-								variant="outline"
-							>
-								<RefreshCw className="w-4 h-4 mr-2" />
-								Refresh
-							</Button>
-							<Button
-								onClick={() => setIsUploadDialogOpen(true)}
-								variant="glow"
-							>
-								<Plus className="w-4 h-4 mr-2" />
-								Upload Document
-							</Button>
+						<div className="mt-[9px] text-[12px] text-dim">
+							{selected.version} · {selected.format} · {selected.size||'unknown size'} · updated{' '}
+							{formatShortDate( selected.updatedAt )}
 						</div>
 					</div>
+					<div className="flex flex-wrap gap-2.5">
+						<Button size="sm" variant="outline" onClick={() => setViewing( selected )}>view</Button>
+						<Button size="sm" variant="outline" onClick={() => handleDownload( selected )}>download</Button>
+						<Button size="sm" variant="ghost" className="border border-br" onClick={() => setEditing( selected )}>
+							edit
+						</Button>
+						<Button size="sm" variant="warning" onClick={() => handleDelete( selected )}>delete</Button>
+					</div>
 				</div>
+			)}
 
-				{/* Document Categories */}
-				<div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-					<Card className="glass glass-interactive animate-fade-up" style={{ animationDelay: '0ms' }}>
-						<CardContent className="p-6 text-center">
-							<div className="w-16 h-16 bg-emerald-500/15 rounded-full flex items-center justify-center mx-auto mb-4">
-								<FileText className="w-8 h-8 text-emerald-400" />
-							</div>
-							<h3 className="text-white text-lg font-semibold mb-2">Resumes</h3>
-							<p className="text-violet-200/70 text-sm">{documentCounts.resume} document{documentCounts.resume !== 1 ? 's' : ''}</p>
-						</CardContent>
-					</Card>
+			<UploadDocumentDialog
+				open={isUploadOpen}
+				onOpenChange={setIsUploadOpen}
+				onDocumentUploaded={fetchDocuments}
+			/>
 
-					<Card className="glass glass-interactive animate-fade-up" style={{ animationDelay: '80ms' }}>
-						<CardContent className="p-6 text-center">
-							<div className="w-16 h-16 bg-blue-500/15 rounded-full flex items-center justify-center mx-auto mb-4">
-								<File className="w-8 h-8 text-blue-400" />
-							</div>
-							<h3 className="text-white text-lg font-semibold mb-2">Cover Letters</h3>
-							<p className="text-violet-200/70 text-sm">{documentCounts.cover_letter} document{documentCounts.cover_letter !== 1 ? 's' : ''}</p>
-						</CardContent>
-					</Card>
+			<DocumentViewerModal
+				open={viewing!==null}
+				onOpenChange={next => {
+					if ( !next ) setViewing( null )
+				}}
+				document={viewing}
+			/>
 
-					<Card className="glass glass-interactive animate-fade-up" style={{ animationDelay: '160ms' }}>
-						<CardContent className="p-6 text-center">
-							<div className="w-16 h-16 bg-purple-500/15 rounded-full flex items-center justify-center mx-auto mb-4">
-								<FileText className="w-8 h-8 text-purple-400" />
-							</div>
-							<h3 className="text-white text-lg font-semibold mb-2">Portfolios</h3>
-							<p className="text-violet-200/70 text-sm">{documentCounts.portfolio} document{documentCounts.portfolio !== 1 ? 's' : ''}</p>
-						</CardContent>
-					</Card>
-				</div>
-
-				{/* Documents List */}
-				<Card className="glass">
-					<CardHeader>
-						<CardTitle className="text-white">All Documents</CardTitle>
-					</CardHeader>
-					<CardContent>
-						{documents.length === 0 ? (
-							<div className="text-center py-12">
-								<FileText className="w-16 h-16 text-violet-300/40 mx-auto mb-4" />
-								<h3 className="text-lg font-medium text-white mb-2">No documents yet</h3>
-								<p className="text-violet-200/70 mb-4">Upload your first document to get started.</p>
-								<Button
-									onClick={() => setIsUploadDialogOpen(true)}
-									variant="glow"
-								>
-									<Plus className="w-4 h-4 mr-2" />
-									Upload Document
-								</Button>
-							</div>
-						) : (
-							<div className="space-y-4">
-								{documents.map((doc, index) => (
-									<div key={doc.id} className="flex items-center justify-between p-4 bg-white/[0.04] rounded-lg border border-white/[0.08] hover:bg-white/[0.06] transition-all duration-200 animate-fade-up" style={{ animationDelay: `${index * 50}ms` }}>
-										<div className="flex items-center space-x-4">
-											<div className="w-12 h-12 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-lg flex items-center justify-center">
-												{getTypeIcon(doc.type)}
-											</div>
-											<div>
-												<h3 className="text-white font-medium">{doc.name}</h3>
-												<div className="flex items-center space-x-4 mt-1 text-sm text-violet-200/70">
-													<span className="capitalize">{doc.type.replace('_', ' ')}</span>
-													<span>•</span>
-													<span>{doc.format}</span>
-													<span>•</span>
-													<span>{doc.size}</span>
-													<span>•</span>
-													<span className="flex items-center space-x-1">
-														<Calendar className="w-3 h-3" />
-														{formatDate(doc.updatedAt)}
-													</span>
-												</div>
-												{doc.description && (
-													<p className="text-sm text-violet-200/70 mt-1">{doc.description}</p>
-												)}
-											</div>
-										</div>
-
-										<div className="flex items-center space-x-3">
-											<Badge className={getStatusColor(doc.status)}>
-												{doc.status}
-											</Badge>
-											<span className="text-xs text-violet-300/40">{doc.version}</span>
-
-											<div className="flex items-center space-x-2">
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => handleViewDocument(doc)}
-													className="text-violet-200/70 hover:text-white hover:bg-white/[0.06]"
-													title="View Document"
-												>
-													<Eye className="w-4 h-4" />
-												</Button>
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => handleDownload(doc)}
-													className="text-violet-200/70 hover:text-white hover:bg-white/[0.06]"
-													title="Download Document"
-												>
-													<Download className="w-4 h-4" />
-												</Button>
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => handleEditDocument(doc)}
-													className="text-violet-200/70 hover:text-white hover:bg-white/[0.06]"
-													title="Edit Document"
-												>
-													<Edit className="w-4 h-4" />
-												</Button>
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => handleDeleteDocument(doc)}
-													className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-													title="Delete Document"
-												>
-													<Trash2 className="w-4 h-4" />
-												</Button>
-											</div>
-										</div>
-									</div>
-								))}
-							</div>
-						)}
-					</CardContent>
-				</Card>
-
-				{/* Upload Document Dialog */}
-				<UploadDocumentDialog
-					open={isUploadDialogOpen}
-					onOpenChange={setIsUploadDialogOpen}
-					onDocumentUploaded={handleDocumentUploaded}
-				/>
-
-				{/* Document Viewer Modal */}
-				<DocumentViewerModal
-					open={isViewerOpen}
-					onOpenChange={setIsViewerOpen}
-					document={viewingDocument}
-				/>
-
-				{/* Edit Document Dialog */}
-				<EditDocumentDialog
-					open={isEditDialogOpen}
-					onOpenChange={setIsEditDialogOpen}
-					document={editingDocument}
-					onDocumentUpdated={handleDocumentUpdated}
-				/>
-			</div>
+			<EditDocumentDialog
+				open={editing!==null}
+				onOpenChange={next => {
+					if ( !next ) setEditing( null )
+				}}
+				document={editing}
+				onDocumentUpdated={fetchDocuments}
+			/>
 		</div>
 	)
 }

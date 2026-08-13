@@ -1,25 +1,27 @@
 'use client'
 
+import { DashboardHeader } from '@/components/dashboard/header'
 import { Button } from '@/components/ui/button'
-import { useState } from 'react'
-import { Brain, FileText, Target, MessageSquare, Sparkles, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { useEffect,useState } from 'react'
 
 interface ResumeParseResult {
 	id: string
-	name: string | null
-	email: string | null
-	phone: string | null
-	summary: string | null
-	skills: string[] | null
-	experience: { title: string; company: string; duration: string; description: string }[]
-	education: { degree: string; school: string; year: string }[]
+	name: string|null
+	email: string|null
+	phone: string|null
+	summary: string|null
+	skills: string[]|null
+	experience: { title: string; company: string; duration: string; description: string }[]|null
+	education: { degree: string; school: string; year: string }[]|null
+	createdAt?: string
 }
 
 interface MatchResult {
 	matchScore: number
-	matchedSkills: string[] | null
-	missingSkills: string[] | null
-	aiAnalysis: string | null
+	matchedSkills: string[]|null
+	missingSkills: string[]|null
+	aiAnalysis: string|null
 }
 
 interface CoverLetterResult {
@@ -36,67 +38,79 @@ interface InterviewQuestion {
 	tips: string
 }
 
-function ScoreBadge( { score }: { score: number } ) {
-	const color = score >= 70
-		? 'from-emerald-500 to-green-500'
-		: score >= 40
-			? 'from-amber-500 to-yellow-500'
-			: 'from-red-500 to-rose-500'
+const TOOLS=[ 'parse resume','score match','cover letter','interview prep' ] as const
+type ToolIndex=0|1|2|3
+
+const fieldClass=
+	'w-full border border-br bg-transparent p-3.5 font-mono text-[12.5px] leading-[1.8] text-fg placeholder:text-dim focus:border-ac focus:outline-none'
+
+/** A panel header: the tool's number and name, with its status on the right. */
+function PanelHead ( { index,label,status }: { index: number; label: string; status: React.ReactNode } ) {
 	return (
-		<div className={`inline-flex items-center px-4 py-2 rounded-full bg-gradient-to-r ${color} text-white font-bold text-lg`}>
-			{score}/100
+		<div className="flex flex-wrap justify-between gap-3 border-b border-br px-5 py-4">
+			<span className="text-[10.5px] uppercase tracking-[.12em] text-dim">
+				{String( index+1 ).padStart( 2,'0' )} — {label}
+			</span>
+			<span className="text-[11.5px]">{status}</span>
 		</div>
 	)
 }
 
-function SectionCard( { title, icon: Icon, children }: { title: string; icon: React.ComponentType<{ className?: string }>; children: React.ReactNode } ) {
+function Field ( { label,value }: { label: string; value: React.ReactNode } ) {
 	return (
-		<div className="bg-white/[0.04] backdrop-blur-xl border border-white/[0.08] rounded-2xl p-6">
-			<div className="flex items-center gap-3 mb-4">
-				<div className="p-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600">
-					<Icon className="w-5 h-5 text-white" />
-				</div>
-				<h2 className="text-lg font-semibold text-white">{title}</h2>
-			</div>
-			{children}
+		<div className="flex gap-3.5 text-[12.5px]">
+			<span className="w-[74px] flex-none text-dim">{label}</span>
+			<span className="flex-1 leading-[1.7]">{value}</span>
 		</div>
 	)
 }
 
-export default function AIToolsPage() {
-	const [ resumeText, setResumeText ] = useState( '' )
-	const [ parsedResume, setParsedResume ] = useState<ResumeParseResult | null>( null )
-	const [ parsing, setParsing ] = useState( false )
+export default function AiToolsPage () {
+	const [ tool,setTool ]=useState<ToolIndex>( 0 )
 
-	const [ jobDesc, setJobDesc ] = useState( '' )
-	const [ matchResult, setMatchResult ] = useState<MatchResult | null>( null )
-	const [ scoring, setScoring ] = useState( false )
+	const [ resumeText,setResumeText ]=useState( '' )
+	const [ parsedResume,setParsedResume ]=useState<ResumeParseResult|null>( null )
+	const [ parsing,setParsing ]=useState( false )
 
-	const [ coverLetterJobDesc, setCoverLetterJobDesc ] = useState( '' )
-	const [ companyName, setCompanyName ] = useState( '' )
-	const [ position, setPosition ] = useState( '' )
-	const [ tone, setTone ] = useState( 'professional' )
-	const [ coverLetter, setCoverLetter ] = useState<CoverLetterResult | null>( null )
-	const [ generating, setGenerating ] = useState( false )
-	const [ copied, setCopied ] = useState( false )
+	const [ jobDesc,setJobDesc ]=useState( '' )
+	const [ matchResult,setMatchResult ]=useState<MatchResult|null>( null )
+	const [ scoring,setScoring ]=useState( false )
 
-	const [ interviewJobDesc, setInterviewJobDesc ] = useState( '' )
-	const [ questions, setQuestions ] = useState<InterviewQuestion[]>( [] )
-	const [ prepping, setPrepping ] = useState( false )
-	const [ expandedQ, setExpandedQ ] = useState<number | null>( null )
+	const [ coverLetterJobDesc,setCoverLetterJobDesc ]=useState( '' )
+	const [ companyName,setCompanyName ]=useState( '' )
+	const [ position,setPosition ]=useState( '' )
+	const [ tone,setTone ]=useState( 'professional' )
+	const [ coverLetter,setCoverLetter ]=useState<CoverLetterResult|null>( null )
+	const [ generating,setGenerating ]=useState( false )
+	const [ copied,setCopied ]=useState( false )
 
-	async function handleParseResume() {
+	const [ interviewJobDesc,setInterviewJobDesc ]=useState( '' )
+	const [ questions,setQuestions ]=useState<InterviewQuestion[]>( [] )
+	const [ prepping,setPrepping ]=useState( false )
+	const [ expandedQuestion,setExpandedQuestion ]=useState<number|null>( 0 )
+
+	// The last parse carries over between sessions, so the other three tools are
+	// usable straight away.
+	useEffect( () => {
+		fetch( '/api/ai/parse-resume' )
+			.then( response => ( response.ok? response.json():null ) )
+			.then( parse => {
+				if ( parse ) setParsedResume( parse )
+			} )
+			.catch( () => undefined )
+	},[] )
+
+	async function handleParseResume () {
 		if ( !resumeText.trim() ) return
 		setParsing( true )
 		try {
-			const res = await fetch( '/api/ai/parse-resume', {
+			const res=await fetch( '/api/ai/parse-resume',{
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify( { text: resumeText } ),
 			} )
 			if ( !res.ok ) throw new Error( 'Failed to parse' )
-			const data = await res.json()
-			setParsedResume( data )
+			setParsedResume( await res.json() )
 		} catch {
 			alert( 'Failed to parse resume. Please try again.' )
 		} finally {
@@ -104,18 +118,17 @@ export default function AIToolsPage() {
 		}
 	}
 
-	async function handleScoreMatch() {
-		if ( !jobDesc.trim() || !parsedResume ) return
+	async function handleScoreMatch () {
+		if ( !jobDesc.trim()||!parsedResume ) return
 		setScoring( true )
 		try {
-			const res = await fetch( '/api/ai/score-match', {
+			const res=await fetch( '/api/ai/score-match',{
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify( { resumeParseId: parsedResume.id, jobDescription: jobDesc } ),
+				body: JSON.stringify( { resumeParseId: parsedResume.id,jobDescription: jobDesc } ),
 			} )
 			if ( !res.ok ) throw new Error( 'Failed to score' )
-			const data = await res.json()
-			setMatchResult( data )
+			setMatchResult( await res.json() )
 		} catch {
 			alert( 'Failed to score match. Please try again.' )
 		} finally {
@@ -123,11 +136,11 @@ export default function AIToolsPage() {
 		}
 	}
 
-	async function handleGenerateCoverLetter() {
-		if ( !coverLetterJobDesc.trim() || !companyName.trim() || !position.trim() || !parsedResume ) return
+	async function handleGenerateCoverLetter () {
+		if ( !coverLetterJobDesc.trim()||!companyName.trim()||!position.trim()||!parsedResume ) return
 		setGenerating( true )
 		try {
-			const res = await fetch( '/api/ai/cover-letter', {
+			const res=await fetch( '/api/ai/cover-letter',{
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify( {
@@ -139,8 +152,7 @@ export default function AIToolsPage() {
 				} ),
 			} )
 			if ( !res.ok ) throw new Error( 'Failed to generate' )
-			const data = await res.json()
-			setCoverLetter( data )
+			setCoverLetter( await res.json() )
 		} catch {
 			alert( 'Failed to generate cover letter. Please try again.' )
 		} finally {
@@ -148,11 +160,11 @@ export default function AIToolsPage() {
 		}
 	}
 
-	async function handleInterviewPrep() {
+	async function handleInterviewPrep () {
 		if ( !interviewJobDesc.trim() ) return
 		setPrepping( true )
 		try {
-			const res = await fetch( '/api/ai/interview-prep', {
+			const res=await fetch( '/api/ai/interview-prep',{
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify( {
@@ -161,8 +173,9 @@ export default function AIToolsPage() {
 				} ),
 			} )
 			if ( !res.ok ) throw new Error( 'Failed to prep' )
-			const data = await res.json()
-			setQuestions( data.questions || [] )
+			const data=await res.json()
+			setQuestions( data.questions||[] )
+			setExpandedQuestion( 0 )
 		} catch {
 			alert( 'Failed to generate interview prep. Please try again.' )
 		} finally {
@@ -170,293 +183,308 @@ export default function AIToolsPage() {
 		}
 	}
 
-	function handleCopy( text: string ) {
+	useEffect( () => {
+		const onKeyDown=( event: KeyboardEvent ) => {
+			if ( !( event.metaKey||event.ctrlKey )||event.key!=='Enter' ) return
+
+			event.preventDefault()
+			const run=[ handleParseResume,handleScoreMatch,handleGenerateCoverLetter,handleInterviewPrep ][ tool ]
+			run()
+		}
+
+		window.addEventListener( 'keydown',onKeyDown )
+		return () => window.removeEventListener( 'keydown',onKeyDown )
+		// Each handler reads current state directly, so only the active tool matters here.
+	} )
+
+	function handleCopy ( text: string ) {
 		navigator.clipboard.writeText( text )
 		setCopied( true )
-		setTimeout( () => setCopied( false ), 2000 )
+		setTimeout( () => setCopied( false ),2000 )
 	}
 
 	return (
-		<div className="p-6 max-w-4xl mx-auto space-y-6">
-			{/* Header */}
-			<div className="flex items-center gap-3">
-				<div className="p-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600">
-					<Sparkles className="w-6 h-6 text-white" />
-				</div>
-				<div>
-					<h1 className="text-2xl font-bold text-white">AI Tools</h1>
-					<p className="text-violet-200/70 text-sm">AI-powered resume parsing, job matching, and interview prep</p>
-				</div>
+		<div>
+			<DashboardHeader eyebrow="ai tools" title="Resume parsing, matching, prep" />
+
+			<div className="mt-[22px] flex flex-wrap gap-2">
+				{TOOLS.map( ( label,index ) => (
+					<button
+						key={label}
+						type="button"
+						onClick={() => setTool( index as ToolIndex )}
+						className={cn(
+							'border px-[13px] py-2 text-[11.5px] transition-colors',
+							tool===index? 'border-ac text-ac':'border-br text-dim hover:border-ac hover:text-ac'
+						)}
+					>
+						{String( index+1 ).padStart( 2,'0' )} {label}
+					</button>
+				) )}
 			</div>
 
-			{/* Parse Resume */}
-			<SectionCard title="Parse Resume" icon={FileText}>
-				<textarea
-					value={resumeText}
-					onChange={( e ) => setResumeText( e.target.value )}
-					placeholder="Paste your resume text here..."
-					className="w-full h-40 bg-white/[0.04] border border-white/[0.08] rounded-xl p-4 text-white placeholder-white/30 resize-none focus:outline-none focus:border-violet-500/50"
-				/>
-				<Button
-					onClick={handleParseResume}
-					disabled={parsing || !resumeText.trim()}
-					className="mt-3 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white"
-				>
-					{parsing ? 'Parsing...' : 'Parse Resume'}
-				</Button>
-
-				{parsedResume && (
-					<div className="mt-4 space-y-3">
-						<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-							{parsedResume.name && (
-								<div className="bg-white/[0.04] rounded-lg p-3">
-									<span className="text-violet-300/70 text-xs">Name</span>
-									<p className="text-white text-sm">{parsedResume.name}</p>
-								</div>
-							)}
-							{parsedResume.email && (
-								<div className="bg-white/[0.04] rounded-lg p-3">
-									<span className="text-violet-300/70 text-xs">Email</span>
-									<p className="text-white text-sm">{parsedResume.email}</p>
-								</div>
-							)}
-							{parsedResume.phone && (
-								<div className="bg-white/[0.04] rounded-lg p-3">
-									<span className="text-violet-300/70 text-xs">Phone</span>
-									<p className="text-white text-sm">{parsedResume.phone}</p>
-								</div>
-							)}
-						</div>
-						{parsedResume.summary && (
-							<div className="bg-white/[0.04] rounded-lg p-3">
-								<span className="text-violet-300/70 text-xs">Summary</span>
-								<p className="text-white/90 text-sm mt-1">{parsedResume.summary}</p>
-							</div>
-						)}
-						{parsedResume.skills && parsedResume.skills.length > 0 && (
-							<div>
-								<span className="text-violet-300/70 text-xs">Skills</span>
-								<div className="flex flex-wrap gap-2 mt-1">
-									{parsedResume.skills.map( ( skill, i ) => (
-										<span key={i} className="px-2.5 py-1 bg-violet-500/20 text-violet-200 rounded-full text-xs">
-											{skill}
-										</span>
-									) )}
-								</div>
-							</div>
-						)}
-						{parsedResume.experience && parsedResume.experience.length > 0 && (
-							<div>
-								<span className="text-violet-300/70 text-xs">Experience</span>
-								<div className="space-y-2 mt-1">
-									{parsedResume.experience.map( ( exp, i ) => (
-										<div key={i} className="bg-white/[0.04] rounded-lg p-3">
-											<p className="text-white text-sm font-medium">{exp.title} at {exp.company}</p>
-											<p className="text-violet-200/60 text-xs">{exp.duration}</p>
-										</div>
-									) )}
-								</div>
-							</div>
-						)}
-					</div>
-				)}
-			</SectionCard>
-
-			{/* Score a Job Match */}
-			<SectionCard title="Score a Job Match" icon={Target}>
-				{!parsedResume ? (
-					<p className="text-white/40 text-sm">Parse your resume first to use job matching.</p>
-				) : (
-					<>
-						<textarea
-							value={jobDesc}
-							onChange={( e ) => setJobDesc( e.target.value )}
-							placeholder="Paste the job description here..."
-							className="w-full h-32 bg-white/[0.04] border border-white/[0.08] rounded-xl p-4 text-white placeholder-white/30 resize-none focus:outline-none focus:border-violet-500/50"
-						/>
-						<Button
-							onClick={handleScoreMatch}
-							disabled={scoring || !jobDesc.trim()}
-							className="mt-3 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white"
-						>
-							{scoring ? 'Scoring...' : 'Score Match'}
-						</Button>
-
-						{matchResult && (
-							<div className="mt-4 space-y-3">
-								<div className="flex items-center gap-4">
-									<ScoreBadge score={matchResult.matchScore} />
-									<span className="text-white/70 text-sm">Match Score</span>
-								</div>
-								{matchResult.matchedSkills && matchResult.matchedSkills.length > 0 && (
-									<div>
-										<span className="text-emerald-400 text-xs font-medium">Matched Skills</span>
-										<div className="flex flex-wrap gap-2 mt-1">
-											{matchResult.matchedSkills.map( ( skill, i ) => (
-												<span key={i} className="px-2.5 py-1 bg-emerald-500/20 text-emerald-200 rounded-full text-xs">
-													{skill}
-												</span>
-											) )}
-										</div>
-									</div>
-								)}
-								{matchResult.missingSkills && matchResult.missingSkills.length > 0 && (
-									<div>
-										<span className="text-red-400 text-xs font-medium">Missing Skills</span>
-										<div className="flex flex-wrap gap-2 mt-1">
-											{matchResult.missingSkills.map( ( skill, i ) => (
-												<span key={i} className="px-2.5 py-1 bg-red-500/20 text-red-200 rounded-full text-xs">
-													{skill}
-												</span>
-											) )}
-										</div>
-									</div>
-								)}
-								{matchResult.aiAnalysis && (
-									<div className="bg-white/[0.04] rounded-lg p-3">
-										<span className="text-violet-300/70 text-xs">Analysis</span>
-										<p className="text-white/90 text-sm mt-1">{matchResult.aiAnalysis}</p>
-									</div>
-								)}
-							</div>
-						)}
-					</>
-				)}
-			</SectionCard>
-
-			{/* Generate Cover Letter */}
-			<SectionCard title="Generate Cover Letter" icon={MessageSquare}>
-				{!parsedResume ? (
-					<p className="text-white/40 text-sm">Parse your resume first to generate cover letters.</p>
-				) : (
-					<>
-						<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-							<input
-								type="text"
-								value={companyName}
-								onChange={( e ) => setCompanyName( e.target.value )}
-								placeholder="Company name"
-								className="bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50"
+			{tool===0&&(
+				<div className="mt-[22px] border border-br">
+					<PanelHead
+						index={0}
+						label="parse resume"
+						status={
+							parsedResume
+								? <span className="text-ac">parsed</span>
+								:<span className="text-dim">paste your resume to begin</span>
+						}
+					/>
+					<div className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-2">
+						<div>
+							<textarea
+								value={resumeText}
+								onChange={event => setResumeText( event.target.value )}
+								placeholder="Paste your resume text here…"
+								rows={6}
+								className={cn( fieldClass,'min-h-[104px] resize-y' )}
 							/>
-							<input
-								type="text"
-								value={position}
-								onChange={( e ) => setPosition( e.target.value )}
-								placeholder="Position title"
-								className="bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50"
-							/>
-						</div>
-						<textarea
-							value={coverLetterJobDesc}
-							onChange={( e ) => setCoverLetterJobDesc( e.target.value )}
-							placeholder="Paste the job description here..."
-							className="w-full h-32 mt-3 bg-white/[0.04] border border-white/[0.08] rounded-xl p-4 text-white placeholder-white/30 resize-none focus:outline-none focus:border-violet-500/50"
-						/>
-						<div className="flex items-center gap-3 mt-3">
-							<select
-								value={tone}
-								onChange={( e ) => setTone( e.target.value )}
-								className="bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-violet-500/50"
-							>
-								<option value="professional" className="bg-gray-900">Professional</option>
-								<option value="casual" className="bg-gray-900">Casual</option>
-								<option value="enthusiastic" className="bg-gray-900">Enthusiastic</option>
-							</select>
-							<Button
-								onClick={handleGenerateCoverLetter}
-								disabled={generating || !coverLetterJobDesc.trim() || !companyName.trim() || !position.trim()}
-								className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white"
-							>
-								{generating ? 'Generating...' : 'Generate'}
+							<Button className="mt-3" onClick={handleParseResume} disabled={parsing||!resumeText.trim()}>
+								{parsing? 'parsing…':'parse resume'}
 							</Button>
 						</div>
 
-						{coverLetter && (
-							<div className="mt-4">
-								<div className="flex items-center justify-between mb-2">
-									<span className="text-violet-300/70 text-xs">Generated Cover Letter</span>
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => handleCopy( coverLetter.content )}
-										className="text-violet-200/70 hover:text-white"
-									>
-										{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-										<span className="ml-1 text-xs">{copied ? 'Copied!' : 'Copy'}</span>
-									</Button>
+						<div className="flex flex-col gap-3">
+							{parsedResume? (
+								<>
+									<Field label="name" value={parsedResume.name??'—'} />
+									<Field label="email" value={parsedResume.email??'—'} />
+									<Field
+										label="skills"
+										value={parsedResume.skills?.length? parsedResume.skills.join( ' · ' ):'—'}
+									/>
+									<Field
+										label="experience"
+										value={
+											parsedResume.experience?.length
+												? `${parsedResume.experience.length} role${
+													parsedResume.experience.length===1? '':'s'
+												} · last: ${parsedResume.experience[ 0 ].title}, ${parsedResume.experience[ 0 ].company}`
+												:'—'
+										}
+									/>
+								</>
+							):(
+								<div className="text-[12.5px] leading-[1.8] text-dim">
+									Nothing parsed yet. The result feeds the other three tools.
 								</div>
-								<div className="bg-white/[0.04] rounded-lg p-4 text-white/90 text-sm whitespace-pre-wrap">
-									{coverLetter.content}
-								</div>
+							)}
+						</div>
+					</div>
+				</div>
+			)}
+
+			{tool===1&&(
+				<div className="mt-[22px] border border-br">
+					<PanelHead
+						index={1}
+						label="score match"
+						status={
+							parsedResume
+								? <span className="text-dim">against the pasted job description</span>
+								:<span className="text-wn">parse a resume first</span>
+						}
+					/>
+					<div className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-[180px_minmax(0,1fr)] lg:items-start">
+						<div>
+							<div className="text-[44px] leading-none text-ac">
+								{matchResult? matchResult.matchScore:'—'}
 							</div>
-						)}
-					</>
-				)}
-			</SectionCard>
+							<div className="label mt-2">of 100</div>
+							<div className="mt-3.5 flex h-[7px] bg-ft">
+								<div className="bg-ac" style={{ width: `${matchResult?.matchScore??0}%` }} />
+							</div>
+						</div>
 
-			{/* Interview Prep */}
-			<SectionCard title="Interview Prep" icon={Brain}>
-				<textarea
-					value={interviewJobDesc}
-					onChange={( e ) => setInterviewJobDesc( e.target.value )}
-					placeholder="Paste the job description here..."
-					className="w-full h-32 bg-white/[0.04] border border-white/[0.08] rounded-xl p-4 text-white placeholder-white/30 resize-none focus:outline-none focus:border-violet-500/50"
-				/>
-				<Button
-					onClick={handleInterviewPrep}
-					disabled={prepping || !interviewJobDesc.trim()}
-					className="mt-3 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white"
-				>
-					{prepping ? 'Generating...' : 'Generate Questions'}
-				</Button>
+						<div>
+							<textarea
+								value={jobDesc}
+								onChange={event => setJobDesc( event.target.value )}
+								placeholder="Paste the job description…"
+								rows={4}
+								className={cn( fieldClass,'resize-y' )}
+							/>
+							<Button
+								className="mt-3"
+								onClick={handleScoreMatch}
+								disabled={scoring||!parsedResume||!jobDesc.trim()}
+							>
+								{scoring? 'scoring…':'score match'}
+							</Button>
 
-				{questions.length > 0 && (
-					<div className="mt-4 space-y-2">
-						{questions.map( ( q, i ) => (
-							<div key={i} className="bg-white/[0.04] rounded-lg border border-white/[0.06]">
-								<button
-									onClick={() => setExpandedQ( expandedQ === i ? null : i )}
-									className="w-full flex items-center justify-between p-3 text-left"
-								>
-									<div className="flex items-center gap-3">
-										<span className="text-violet-400 font-mono text-xs">Q{i + 1}</span>
-										<span className="text-white text-sm">{q.question}</span>
-									</div>
-									<div className="flex items-center gap-2">
-										<span className={`px-2 py-0.5 rounded-full text-xs ${
-											q.difficulty === 'hard'
-												? 'bg-red-500/20 text-red-300'
-												: q.difficulty === 'medium'
-													? 'bg-amber-500/20 text-amber-300'
-													: 'bg-emerald-500/20 text-emerald-300'
-										}`}>
-											{q.difficulty}
-										</span>
-										<span className="px-2 py-0.5 bg-white/[0.06] rounded-full text-xs text-violet-200/70">
-											{q.category}
-										</span>
-										{expandedQ === i ? <ChevronUp className="w-4 h-4 text-white/40" /> : <ChevronDown className="w-4 h-4 text-white/40" />}
-									</div>
-								</button>
-								{expandedQ === i && (
-									<div className="px-3 pb-3 space-y-2 border-t border-white/[0.06] pt-3">
-										<div>
-											<span className="text-violet-300/70 text-xs">Answer Framework</span>
-											<p className="text-white/80 text-sm mt-1">{q.answerFramework}</p>
+							{matchResult&&(
+								<div className="mt-4">
+									{matchResult.matchedSkills?.length? (
+										<>
+											<div className="label">matched</div>
+											<div className="mt-2.5 text-[12.5px] leading-[1.8]">
+												{matchResult.matchedSkills.join( ' · ' )}
+											</div>
+										</>
+									):null}
+									{matchResult.missingSkills?.length? (
+										<>
+											<div className="label mt-4">missing</div>
+											<div className="mt-2.5 text-[12.5px] leading-[1.8] text-wn">
+												{matchResult.missingSkills.join( ' · ' )}
+											</div>
+										</>
+									):null}
+									{matchResult.aiAnalysis&&(
+										<div className="mt-4 text-[12.5px] leading-[1.8] text-dim">
+											{matchResult.aiAnalysis}
 										</div>
-										{q.tips && (
-											<div>
-												<span className="text-violet-300/70 text-xs">Tips</span>
-												<p className="text-white/80 text-sm mt-1">{q.tips}</p>
+									)}
+								</div>
+							)}
+						</div>
+					</div>
+				</div>
+			)}
+
+			{tool===2&&(
+				<div className="mt-[22px] border border-br">
+					<PanelHead
+						index={2}
+						label="cover letter"
+						status={
+							coverLetter
+								? <span className="text-ac">{coverLetter.tone}</span>
+								:<span className="text-dim">{parsedResume? 'ready':'parse a resume first'}</span>
+						}
+					/>
+					<div className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-2">
+						<div className="flex flex-col gap-3">
+							<input
+								value={companyName}
+								onChange={event => setCompanyName( event.target.value )}
+								placeholder="Company"
+								className={fieldClass}
+							/>
+							<input
+								value={position}
+								onChange={event => setPosition( event.target.value )}
+								placeholder="Position"
+								className={fieldClass}
+							/>
+							<div className="flex gap-2">
+								{[ 'professional','casual','enthusiastic' ].map( option => (
+									<button
+										key={option}
+										type="button"
+										onClick={() => setTone( option )}
+										className={cn(
+											'border px-3 py-[7px] text-[11.5px] transition-colors',
+											tone===option
+												? 'border-ac text-ac'
+												:'border-br text-dim hover:border-ac hover:text-ac'
+										)}
+									>
+										{option}
+									</button>
+								) )}
+							</div>
+							<textarea
+								value={coverLetterJobDesc}
+								onChange={event => setCoverLetterJobDesc( event.target.value )}
+								placeholder="Paste the job description…"
+								rows={5}
+								className={cn( fieldClass,'resize-y' )}
+							/>
+							<Button
+								onClick={handleGenerateCoverLetter}
+								disabled={
+									generating||!parsedResume||!coverLetterJobDesc.trim()||!companyName.trim()||!position.trim()
+								}
+							>
+								{generating? 'writing…':'generate cover letter'}
+							</Button>
+						</div>
+
+						<div>
+							{coverLetter? (
+								<>
+									<div className="max-h-[420px] overflow-auto border border-br p-3.5 text-[12.5px] leading-[1.85] whitespace-pre-wrap">
+										{coverLetter.content}
+									</div>
+									<Button
+										variant="outline"
+										className="mt-3"
+										onClick={() => handleCopy( coverLetter.content )}
+									>
+										{copied? 'copied':'copy'}
+									</Button>
+								</>
+							):(
+								<div className="text-[12.5px] leading-[1.8] text-dim">
+									The draft appears here. It is saved against your account, not sent anywhere.
+								</div>
+							)}
+						</div>
+					</div>
+				</div>
+			)}
+
+			{tool===3&&(
+				<div className="mt-[22px] border border-br">
+					<PanelHead
+						index={3}
+						label="interview prep"
+						status={
+							questions.length>0
+								? <span className="text-dim">{questions.length} questions generated</span>
+								:<span className="text-dim">paste a job description</span>
+						}
+					/>
+					<div className="p-5">
+						<textarea
+							value={interviewJobDesc}
+							onChange={event => setInterviewJobDesc( event.target.value )}
+							placeholder="Paste the job description…"
+							rows={3}
+							className={cn( fieldClass,'resize-y' )}
+						/>
+						<Button className="mt-3" onClick={handleInterviewPrep} disabled={prepping||!interviewJobDesc.trim()}>
+							{prepping? 'thinking…':'generate questions'}
+						</Button>
+					</div>
+
+					{questions.length>0&&(
+						<div className="px-5 pb-5">
+							{questions.map( ( question,index ) => {
+								const isOpen=expandedQuestion===index
+								return (
+									<div key={question.question} className={index<questions.length-1? 'row-rule':undefined}>
+										<button
+											type="button"
+											onClick={() => setExpandedQuestion( isOpen? null:index )}
+											className="flex w-full items-baseline gap-3.5 py-3.5 text-left"
+										>
+											<span className={cn( 'flex-none text-[12px]',isOpen? 'text-ac':'text-dim' )}>
+												Q{index+1}
+											</span>
+											<span className="display flex-1 text-[14px]">{question.question}</span>
+											<span className="flex-none text-[11.5px] text-dim">
+												{question.category} · {question.difficulty}
+											</span>
+										</button>
+										{isOpen&&( question.answerFramework||question.tips )&&(
+											<div className="mb-3.5 ml-[34px] text-[12.5px] leading-[1.8] text-dim">
+												{question.answerFramework}
+												{question.tips&&<span> {question.tips}</span>}
 											</div>
 										)}
 									</div>
-								)}
-							</div>
-						) )}
-					</div>
-				)}
-			</SectionCard>
+								)
+							} )}
+						</div>
+					)}
+				</div>
+			)}
 		</div>
 	)
 }

@@ -1,22 +1,10 @@
 'use client'
 
+import { DashboardHeader } from '@/components/dashboard/header'
 import { Button } from '@/components/ui/button'
+import { formatAge,formatSalary,parseTags,scoreJob,type JobMatch } from '@/lib/job-match'
 import { cn } from '@/lib/utils'
-import { formatDistanceToNow } from 'date-fns'
-import {
-	Bookmark,
-	BookmarkCheck,
-	Briefcase,
-	ExternalLink,
-	Filter,
-	Globe,
-	Loader2,
-	MapPin,
-	RefreshCw,
-	Search,
-	X,
-} from 'lucide-react'
-import { useCallback,useEffect,useState } from 'react'
+import { useCallback,useEffect,useMemo,useRef,useState } from 'react'
 
 interface ExternalJob {
 	id: string
@@ -37,391 +25,429 @@ interface ExternalJob {
 	isSaved: boolean
 }
 
-const sourceLabels: Record<string, string>={
-	remoteok: 'RemoteOK',
-	adzuna: 'Adzuna',
-	jsearch: 'JSearch',
+const SOURCES=[ 'remoteok','adzuna','jsearch' ]
+
+/** A score at or above this is worth the accent. */
+const STRONG_MATCH=80
+
+interface ParsedQuery {
+	source: string|null
+	remoteOnly: boolean
+	minMatch: number|null
+	text: string
 }
 
-const sourceColors: Record<string, string>={
-	remoteok: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-	adzuna: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-	jsearch: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+/**
+ * `remote:true`, `source:remoteok` and `match:>70` narrow; anything else is
+ * free text handed to the jobs endpoint.
+ */
+function parseQuery ( raw: string ): ParsedQuery {
+	const parsed: ParsedQuery={ source: null,remoteOnly: false,minMatch: null,text: '' }
+	const words: string[]=[]
+
+	for ( const token of raw.trim().split( /\s+/ ).filter( Boolean ) ) {
+		const [ key,...rest ]=token.split( ':' )
+		const value=rest.join( ':' )
+
+		if ( key==='source'&&value ) parsed.source=value.toLowerCase()
+		else if ( key==='remote' ) parsed.remoteOnly=value!=='false'
+		else if ( key==='match'&&value ) {
+			const number=parseInt( value.replace( /[^\d]/g,'' ),10 )
+			if ( !isNaN( number ) ) parsed.minMatch=number
+		} else words.push( token )
+	}
+
+	parsed.text=words.join( ' ' )
+	return parsed
 }
 
 export default function DiscoverPage () {
 	const [ jobs,setJobs ]=useState<ExternalJob[]>( [] )
-	const [ loading,setLoading ]=useState( true )
-	const [ fetching,setFetching ]=useState( false )
-	const [ search,setSearch ]=useState( '' )
-	const [ source,setSource ]=useState( '' )
-	const [ remoteOnly,setRemoteOnly ]=useState( false )
+	const [ skills,setSkills ]=useState<string[]|null>( null )
+	const [ isLoading,setIsLoading ]=useState( true )
+	const [ isFetching,setIsFetching ]=useState( false )
+	const [ query,setQuery ]=useState( '' )
 	const [ page,setPage ]=useState( 1 )
 	const [ totalPages,setTotalPages ]=useState( 1 )
 	const [ total,setTotal ]=useState( 0 )
-	const [ selectedJob,setSelectedJob ]=useState<ExternalJob|null>( null )
-	const [ showFilters,setShowFilters ]=useState( false )
+	const [ selectedId,setSelectedId ]=useState<string|null>( null )
+	const [ notice,setNotice ]=useState<string|null>( null )
+	const inputRef=useRef<HTMLInputElement>( null )
+
+	const parsed=useMemo( () => parseQuery( query ),[ query ] )
+
+	// The user's own skills are what jobs are scored against.
+	useEffect( () => {
+		fetch( '/api/ai/parse-resume' )
+			.then( response => ( response.ok? response.json():null ) )
+			.then( parse => setSkills( parse?.skills??null ) )
+			.catch( () => setSkills( null ) )
+	},[] )
 
 	const loadJobs=useCallback( async () => {
-		setLoading( true )
+		setIsLoading( true )
 		try {
 			const params=new URLSearchParams()
-			if ( search ) params.set( 'search',search )
-			if ( source ) params.set( 'source',source )
-			if ( remoteOnly ) params.set( 'remote','true' )
+			if ( parsed.text ) params.set( 'search',parsed.text )
+			if ( parsed.source ) params.set( 'source',parsed.source )
+			if ( parsed.remoteOnly ) params.set( 'remote','true' )
 			params.set( 'page',String( page ) )
 
-			const res=await fetch( `/api/jobs?${params}` )
-			if ( res.ok ) {
-				const data=await res.json()
-				setJobs( data.jobs )
-				setTotalPages( data.totalPages )
-				setTotal( data.total )
-			}
+			const response=await fetch( `/api/jobs?${params}` )
+			if ( !response.ok ) throw new Error( 'Failed to load jobs' )
+
+			const data=await response.json()
+			setJobs( data.jobs )
+			setTotalPages( data.totalPages )
+			setTotal( data.total )
 		} catch ( error ) {
 			console.error( 'Failed to load jobs:',error )
 		} finally {
-			setLoading( false )
+			setIsLoading( false )
 		}
-	},[ search,source,remoteOnly,page ] )
+	},[ parsed.text,parsed.source,parsed.remoteOnly,page ] )
 
 	useEffect( () => {
 		loadJobs()
 	},[ loadJobs ] )
 
+	// Scored here so the list, the score and the detail panel never disagree.
+	const scored=useMemo( () => {
+		const rows=jobs.map( job => ( { job,match: scoreJob( parseTags( job.tags ),skills ) } ) )
+		if ( parsed.minMatch===null ) return rows
+		return rows.filter( row => ( row.match.score??0 )>=parsed.minMatch! )
+	},[ jobs,skills,parsed.minMatch ] )
+
+	const selected=scored.find( row => row.job.id===selectedId )??scored[ 0 ]??null
+
 	const handleFetchNew=async () => {
-		setFetching( true )
+		setIsFetching( true )
+		setNotice( null )
 		try {
-			const res=await fetch( '/api/jobs/fetch',{ method: 'POST' } )
-			if ( res.ok ) {
-				const data=await res.json()
-				alert( `Fetched ${data.inserted} new jobs from ${Object.entries( data.sources ).filter( ( [ ,v ] ) => ( v as number )>0 ).map( ( [ k,v ] ) => `${sourceLabels[ k ]||k}: ${v}` ).join( ', ' )||'no sources'}` )
-				loadJobs()
-			}
+			const response=await fetch( '/api/jobs/fetch',{ method: 'POST' } )
+			if ( !response.ok ) throw new Error( 'Fetch failed' )
+
+			const data=await response.json()
+			const breakdown=Object.entries( data.sources??{} )
+				.filter( ( [ ,count ] ) => ( count as number )>0 )
+				.map( ( [ source,count ] ) => `${source} ${count}` )
+				.join( ' · ' )
+			setNotice( `${data.inserted} new · ${breakdown||'no new listings'}` )
+			await loadJobs()
 		} catch {
-			alert( 'Failed to fetch jobs' )
+			setNotice( 'could not reach the job boards' )
 		} finally {
-			setFetching( false )
+			setIsFetching( false )
 		}
 	}
 
 	const handleSave=async ( jobId: string,currentlySaved: boolean ) => {
-		const res=await fetch( '/api/jobs/save',{
+		const response=await fetch( '/api/jobs/save',{
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify( { jobId,action: currentlySaved? 'unsave':'save' } ),
 		} )
-		if ( res.ok ) {
-			setJobs( ( prev ) => prev.map( ( j ) => j.id===jobId? { ...j,isSaved: !currentlySaved }:j ) )
-			if ( selectedJob?.id===jobId ) {
-				setSelectedJob( ( prev ) => prev? { ...prev,isSaved: !currentlySaved }:null )
-			}
-		}
+		if ( !response.ok ) return
+
+		setJobs( previous =>
+			previous.map( job => ( job.id===jobId? { ...job,isSaved: !currentlySaved }:job ) )
+		)
 	}
 
 	const handleQuickApply=async ( jobId: string ) => {
 		if ( !confirm( 'Add this job to your applications tracker?' ) ) return
-		const res=await fetch( '/api/jobs/save',{
+
+		const response=await fetch( '/api/jobs/save',{
 			method: 'PUT',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify( { jobId } ),
 		} )
-		if ( res.ok ) {
-			alert( 'Added to your applications!' )
-		} else {
-			alert( 'Failed to add application' )
-		}
+		setNotice( response.ok? 'added to your applications':'could not add the application' )
 	}
 
-	const formatSalary=( job: ExternalJob ) => {
-		if ( !job.salaryMin&&!job.salaryMax ) return null
-		const curr=job.salaryCurrency||'USD'
-		if ( job.salaryMin&&job.salaryMax ) {
-			return `${curr} ${job.salaryMin.toLocaleString()} – ${job.salaryMax.toLocaleString()}`
-		}
-		if ( job.salaryMin ) return `${curr} ${job.salaryMin.toLocaleString()}+`
-		return `Up to ${curr} ${job.salaryMax!.toLocaleString()}`
-	}
+	useEffect( () => {
+		const onKeyDown=( event: KeyboardEvent ) => {
+			if ( event.metaKey||event.ctrlKey||event.altKey ) return
 
-	const parseTags=( tags: string|null ): string[] => {
-		if ( !tags ) return []
-		try { return JSON.parse( tags ) } catch { return [] }
-	}
+			const target=event.target as HTMLElement|null
+			const inField=Boolean( target?.isContentEditable )
+				||Boolean( target&&/^(INPUT|TEXTAREA|SELECT)$/.test( target.tagName ) )
+
+			if ( event.key==='Escape'&&inField ) {
+				inputRef.current?.blur()
+				return
+			}
+			if ( inField ) return
+
+			if ( event.key==='/' ) {
+				event.preventDefault()
+				inputRef.current?.focus()
+			} else if ( ( event.key==='s'||event.key==='S' )&&selected ) {
+				event.preventDefault()
+				handleSave( selected.job.id,selected.job.isSaved )
+			}
+		}
+
+		window.addEventListener( 'keydown',onKeyDown )
+		return () => window.removeEventListener( 'keydown',onKeyDown )
+	},[ selected ] )
+
+	const sourceCounts=useMemo( () => {
+		const counts: Record<string,number>={}
+		for ( const { job } of scored ) counts[ job.source ]=( counts[ job.source ]??0 )+1
+		return counts
+	},[ scored ] )
 
 	return (
-		<div className="flex-1 min-h-screen">
-			<div className="p-6 max-w-7xl mx-auto">
-				{/* Header */}
-				<div className="flex items-center justify-between mb-6">
-					<div>
-						<h1 className="text-2xl font-bold text-white">Discover Jobs</h1>
-						<p className="text-violet-200/60 text-sm mt-1">{total} jobs from multiple boards</p>
-					</div>
-					<Button
-						onClick={handleFetchNew}
-						disabled={fetching}
-						className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white"
-					>
-						{fetching? <Loader2 className="w-4 h-4 mr-2 animate-spin" />:<RefreshCw className="w-4 h-4 mr-2" />}
-						Fetch New Jobs
+		<div>
+			<DashboardHeader
+				eyebrow="discover"
+				title={
+					isLoading&&jobs.length===0
+						? 'Loading jobs'
+						:`${total.toLocaleString()} job${total===1? '':'s'} from ${SOURCES.length} boards`
+				}
+				align="end"
+				action={
+					<Button variant="outline" onClick={handleFetchNew} disabled={isFetching}>
+						{isFetching? 'fetching…':'fetch new jobs'}
 					</Button>
-				</div>
+				}
+			/>
 
-				{/* Search & Filters */}
-				<div className="mb-6 space-y-3">
-					<div className="flex gap-3">
-						<div className="flex-1 relative">
-							<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-violet-300/50" />
-							<input
-								type="text"
-								value={search}
-								onChange={( e ) => { setSearch( e.target.value ); setPage( 1 ) }}
-								placeholder="Search jobs by title or company..."
-								className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/[0.08] text-white placeholder-violet-300/40 focus:outline-none focus:ring-2 focus:ring-violet-500/40 text-sm"
-							/>
-						</div>
-						<Button
-							variant="ghost"
-							onClick={() => setShowFilters( !showFilters )}
-							className={cn(
-								"text-violet-200 hover:bg-white/[0.06]",
-								showFilters&&"bg-white/[0.08]"
-							)}
-						>
-							<Filter className="w-4 h-4 mr-2" />
-							Filters
-						</Button>
-					</div>
+			{notice&&(
+				<div className="panel-accent mt-5 px-5 py-3 text-[12px] text-ac">{notice}</div>
+			)}
 
-					{showFilters&&(
-						<div className="flex gap-3 flex-wrap">
-							<select
-								value={source}
-								onChange={( e ) => { setSource( e.target.value ); setPage( 1 ) }}
-								className="px-3 py-2 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
-							>
-								<option value="">All Sources</option>
-								<option value="remoteok">RemoteOK</option>
-								<option value="adzuna">Adzuna</option>
-								<option value="jsearch">JSearch</option>
-							</select>
-							<button
-								onClick={() => { setRemoteOnly( !remoteOnly ); setPage( 1 ) }}
-								className={cn(
-									"px-3 py-2 rounded-lg border text-sm transition-colors",
-									remoteOnly
-										? "bg-emerald-500/20 border-emerald-500/30 text-emerald-300"
-										:"bg-white/[0.06] border-white/[0.08] text-violet-200"
-								)}
-							>
-								<Globe className="w-3.5 h-3.5 inline mr-1.5" />
-								Remote Only
-							</button>
-							{( search||source||remoteOnly )&&(
-								<button
-									onClick={() => { setSearch( '' ); setSource( '' ); setRemoteOnly( false ); setPage( 1 ) }}
-									className="px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.06] text-violet-300/60 text-sm hover:text-white transition-colors"
-								>
-									<X className="w-3.5 h-3.5 inline mr-1" />
-									Clear
-								</button>
-							)}
-						</div>
+			<div className="mt-6 flex items-center border border-br">
+				<span className="border-r border-br px-3.5 py-[13px] text-ac">/</span>
+				<input
+					ref={inputRef}
+					value={query}
+					onChange={event => {
+						setQuery( event.target.value )
+						setPage( 1 )
+					}}
+					placeholder="frontend engineer remote:true match:>70"
+					spellCheck={false}
+					aria-label="Filter jobs"
+					className="flex-1 bg-transparent px-3.5 py-[13px] font-mono text-[13px] text-fg placeholder:text-dim focus:outline-none"
+				/>
+				<span className="border-l border-br px-3.5 py-[13px] text-[11.5px] text-dim">
+					{scored.length} result{scored.length===1? '':'s'}
+				</span>
+			</div>
+
+			<div className="mt-3.5 flex flex-wrap gap-2">
+				<button
+					type="button"
+					onClick={() => setQuery( parsed.remoteOnly? 'remote:true':'' )}
+					className={cn(
+						'border px-3 py-[7px] text-[11.5px] transition-colors',
+						parsed.source===null? 'border-ac text-ac':'border-br text-dim hover:border-ac hover:text-ac'
 					)}
-				</div>
+				>
+					all sources
+				</button>
+				{SOURCES.map( source => (
+					<button
+						key={source}
+						type="button"
+						onClick={() => setQuery( `source:${source}` )}
+						className={cn(
+							'border px-3 py-[7px] text-[11.5px] transition-colors',
+							parsed.source===source
+								? 'border-ac text-ac'
+								:'border-br text-dim hover:border-ac hover:text-ac'
+						)}
+					>
+						{source} {sourceCounts[ source ]??0}
+					</button>
+				) )}
+				<button
+					type="button"
+					onClick={() => setQuery( parsed.remoteOnly? '':'remote:true' )}
+					className={cn(
+						'border px-3 py-[7px] text-[11.5px] transition-colors',
+						parsed.remoteOnly? 'border-ac text-ac':'border-br text-dim hover:border-ac hover:text-ac'
+					)}
+				>
+					remote only
+				</button>
+			</div>
 
-				{/* Content */}
-				<div className="flex gap-6">
-					{/* Job List */}
-					<div className="flex-1 space-y-3">
-						{loading? (
-							<div className="flex items-center justify-center py-20">
-								<Loader2 className="w-6 h-6 animate-spin text-violet-400" />
-							</div>
-						):jobs.length===0? (
-							<div className="text-center py-20">
-								<Briefcase className="w-12 h-12 mx-auto text-violet-300/30 mb-3" />
-								<p className="text-violet-200/60">No jobs found. Try fetching new jobs or adjusting filters.</p>
+			{skills===null&&(
+				<div className="mt-3.5 text-[11.5px] text-dim">
+					Match scores need a parsed resume — run{' '}
+					<a href="/dashboard/ai-tools" className="text-ac no-underline hover:underline">
+						parse resume
+					</a>{' '}
+					once and every listing here gets scored against your skills.
+				</div>
+			)}
+
+			<div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+				<div>
+					<div className="flex flex-col border-t border-br">
+						{isLoading? (
+							Array.from( { length: 6 } ).map( ( _,i ) => (
+								<div key={i} className="border-b border-br px-3.5 py-[15px]">
+									<div className="skeleton h-4 w-2/3" />
+									<div className="skeleton mt-[7px] h-3 w-1/2" />
+								</div>
+							) )
+						):scored.length===0? (
+							<div className="border-b border-br py-10 text-center text-[12.5px] text-dim">
+								{total===0
+									? 'No jobs stored yet. Fetch new jobs to fill the board.'
+									:'Nothing matches that filter.'}
 							</div>
 						):(
-							<>
-								{jobs.map( ( job ) => (
+							scored.map( ( { job,match } ) => {
+								const isSelected=selected?.job.id===job.id
+								const salary=formatSalary( job.salaryMin,job.salaryMax,job.salaryCurrency )
+
+								return (
 									<button
 										key={job.id}
-										onClick={() => setSelectedJob( job )}
+										type="button"
+										onClick={() => setSelectedId( job.id )}
 										className={cn(
-											"w-full text-left p-4 rounded-xl border transition-all duration-200",
-											selectedJob?.id===job.id
-												? "bg-white/[0.08] border-violet-500/30 shadow-lg shadow-violet-500/5"
-												:"bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.06]"
+											'border-b border-br px-3.5 py-[15px] text-left transition-colors',
+											isSelected
+												? 'bg-ft shadow-[inset_2px_0_0_var(--ac)]'
+												:'hover:bg-ft'
 										)}
 									>
-										<div className="flex items-start justify-between gap-3">
-											<div className="flex-1 min-w-0">
-												<div className="flex items-center gap-2 mb-1">
-													<h3 className="text-white font-medium text-sm truncate">{job.title}</h3>
-													<span className={cn( "text-[10px] px-1.5 py-0.5 rounded-full border",sourceColors[ job.source ]||'bg-gray-500/20 text-gray-300' )}>
-														{sourceLabels[ job.source ]||job.source}
-													</span>
-												</div>
-												<p className="text-violet-200/70 text-xs mb-2">{job.company}</p>
-												<div className="flex items-center gap-3 text-[11px] text-violet-300/50">
-													{job.location&&(
-														<span className="flex items-center gap-1">
-															<MapPin className="w-3 h-3" />{job.location}
-														</span>
+										<div className="flex justify-between gap-3">
+											<span className="display truncate text-[14.5px] text-fg">{job.title}</span>
+											{match.score!==null&&(
+												<span
+													className={cn(
+														'flex-none text-[12px]',
+														match.score>=STRONG_MATCH? 'text-ac':'text-dim'
 													)}
-													{job.isRemote&&(
-														<span className="flex items-center gap-1 text-emerald-400/70">
-															<Globe className="w-3 h-3" />Remote
-														</span>
-													)}
-													{formatSalary( job )&&(
-														<span className="text-green-400/70">{formatSalary( job )}</span>
-													)}
-												</div>
-											</div>
-											<button
-												onClick={( e ) => { e.stopPropagation(); handleSave( job.id,job.isSaved ) }}
-												className="p-1.5 hover:bg-white/[0.08] rounded-lg transition-colors"
-											>
-												{job.isSaved
-													? <BookmarkCheck className="w-4 h-4 text-violet-400" />
-													:<Bookmark className="w-4 h-4 text-violet-300/40" />
-												}
-											</button>
+												>
+													{match.score} match
+												</span>
+											)}
+											{job.isSaved&&<span className="flex-none text-[12px] text-ac">saved</span>}
+										</div>
+										<div className="mt-[7px] truncate text-[12px] text-dim">
+											{[
+												job.company,
+												job.isRemote? 'remote':job.location,
+												salary,
+												job.source,
+												formatAge( job.postedAt??job.fetchedAt ),
+											]
+												.filter( Boolean )
+												.join( ' · ' )}
 										</div>
 									</button>
-								) )}
-
-								{/* Pagination */}
-								{totalPages>1&&(
-									<div className="flex items-center justify-center gap-2 pt-4">
-										<Button
-											variant="ghost"
-											size="sm"
-											disabled={page===1}
-											onClick={() => setPage( page-1 )}
-											className="text-violet-200 hover:bg-white/[0.06]"
-										>
-											Previous
-										</Button>
-										<span className="text-violet-200/60 text-sm px-3">
-											Page {page} of {totalPages}
-										</span>
-										<Button
-											variant="ghost"
-											size="sm"
-											disabled={page===totalPages}
-											onClick={() => setPage( page+1 )}
-											className="text-violet-200 hover:bg-white/[0.06]"
-										>
-											Next
-										</Button>
-									</div>
-								)}
-							</>
+								)
+							} )
 						)}
 					</div>
 
-					{/* Job Detail Panel */}
-					{selectedJob&&(
-						<div className="w-[420px] shrink-0 sticky top-6 self-start">
-							<div className="bg-white/[0.04] backdrop-blur-xl border border-white/[0.08] rounded-2xl p-6 space-y-4">
-								<div className="flex items-start justify-between">
-									<div className="flex-1 min-w-0">
-										<h2 className="text-lg font-semibold text-white mb-1">{selectedJob.title}</h2>
-										<p className="text-violet-200/80 text-sm">{selectedJob.company}</p>
-									</div>
-									<button
-										onClick={() => setSelectedJob( null )}
-										className="p-1 hover:bg-white/[0.08] rounded-lg"
-									>
-										<X className="w-4 h-4 text-violet-300/50" />
+					{totalPages>1&&(
+						<div className="mt-4 flex justify-between text-[12px] text-dim">
+							<span>page {page} of {totalPages}</span>
+							<span className="flex gap-4">
+								{page>1&&(
+									<button type="button" onClick={() => setPage( p => p-1 )} className="text-ac hover:underline">
+										← prev
 									</button>
-								</div>
-
-								<div className="flex flex-wrap gap-2">
-									<span className={cn( "text-xs px-2 py-1 rounded-full border",sourceColors[ selectedJob.source ] )}>
-										{sourceLabels[ selectedJob.source ]||selectedJob.source}
-									</span>
-									{selectedJob.isRemote&&(
-										<span className="text-xs px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/20">
-											Remote
-										</span>
-									)}
-									{selectedJob.location&&(
-										<span className="text-xs px-2 py-1 rounded-full bg-white/[0.06] text-violet-200/70 border border-white/[0.08]">
-											<MapPin className="w-3 h-3 inline mr-1" />{selectedJob.location}
-										</span>
-									)}
-								</div>
-
-								{formatSalary( selectedJob )&&(
-									<div className="px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/20">
-										<p className="text-green-300 text-sm font-medium">{formatSalary( selectedJob )}</p>
-									</div>
 								)}
-
-								{parseTags( selectedJob.tags ).length>0&&(
-									<div className="flex flex-wrap gap-1.5">
-										{parseTags( selectedJob.tags ).slice( 0,8 ).map( ( tag ) => (
-											<span key={tag} className="text-[11px] px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-300/80 border border-violet-500/15">
-												{tag}
-											</span>
-										) )}
-									</div>
+								{page<totalPages&&(
+									<button type="button" onClick={() => setPage( p => p+1 )} className="text-ac hover:underline">
+										next →
+									</button>
 								)}
-
-								{selectedJob.description&&(
-									<div className="max-h-60 overflow-y-auto pr-2">
-										<p className="text-violet-200/60 text-xs leading-relaxed whitespace-pre-line">
-											{selectedJob.description.slice( 0,1000 )}
-											{selectedJob.description.length>1000&&'...'}
-										</p>
-									</div>
-								)}
-
-								{selectedJob.postedAt&&(
-									<p className="text-violet-300/40 text-xs">
-										Posted {formatDistanceToNow( new Date( selectedJob.postedAt ),{ addSuffix: true } )}
-									</p>
-								)}
-
-								<div className="flex gap-2 pt-2 border-t border-white/[0.06]">
-									<Button
-										onClick={() => handleQuickApply( selectedJob.id )}
-										className="flex-1 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-sm"
-									>
-										<Briefcase className="w-3.5 h-3.5 mr-1.5" />
-										Quick Apply
-									</Button>
-									<Button
-										onClick={() => handleSave( selectedJob.id,selectedJob.isSaved )}
-										variant="ghost"
-										className={cn(
-											"border text-sm",
-											selectedJob.isSaved
-												? "border-violet-500/30 text-violet-300 bg-violet-500/10"
-												:"border-white/[0.08] text-violet-200 hover:bg-white/[0.06]"
-										)}
-									>
-										{selectedJob.isSaved? <BookmarkCheck className="w-3.5 h-3.5 mr-1.5" />:<Bookmark className="w-3.5 h-3.5 mr-1.5" />}
-										{selectedJob.isSaved? 'Saved':'Save'}
-									</Button>
-									<a
-										href={selectedJob.url}
-										target="_blank"
-										rel="noopener noreferrer"
-										className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-white/[0.08] text-violet-200 hover:bg-white/[0.06] transition-colors"
-									>
-										<ExternalLink className="w-3.5 h-3.5" />
-									</a>
-								</div>
-							</div>
+							</span>
 						</div>
 					)}
 				</div>
+
+				{selected&&<JobDetail job={selected.job} match={selected.match} onSave={handleSave} onApply={handleQuickApply} />}
+			</div>
+		</div>
+	)
+}
+
+interface JobDetailProps {
+	job: ExternalJob
+	match: JobMatch
+	onSave: ( jobId: string,currentlySaved: boolean ) => void
+	onApply: ( jobId: string ) => void
+}
+
+function JobDetail ( { job,match,onSave,onApply }: JobDetailProps ) {
+	const salary=formatSalary( job.salaryMin,job.salaryMax,job.salaryCurrency )
+	const currency=job.salaryCurrency?.toLowerCase()??'usd'
+
+	return (
+		<div className="h-max border border-br">
+			<div className="border-b border-br p-[18px]">
+				<h2 className="display text-[17px] font-normal leading-[1.3]">{job.title}</h2>
+				<div className="mt-2 text-[12.5px] text-dim">{job.company}</div>
+				<div className="mt-3.5 flex flex-wrap gap-[7px]">
+					{match.score!==null&&(
+						<span className="border border-ac px-[9px] py-[5px] text-[11px] text-ac">
+							{match.score} match
+						</span>
+					)}
+					<span className="border border-br px-[9px] py-[5px] text-[11px] text-dim">{job.source}</span>
+					{( job.isRemote||job.location )&&(
+						<span className="border border-br px-[9px] py-[5px] text-[11px] text-dim">
+							{job.isRemote? 'remote':job.location}
+						</span>
+					)}
+					{salary&&(
+						<span className="border border-br px-[9px] py-[5px] text-[11px] text-dim">
+							{currency} {salary}
+						</span>
+					)}
+				</div>
+			</div>
+
+			{( match.matched.length>0||match.missing.length>0 )&&(
+				<div className="border-b border-br p-[18px]">
+					{match.matched.length>0&&(
+						<>
+							<div className="label">matched skills</div>
+							<div className="mt-2.5 text-[12px] leading-[1.9] text-fg">
+								{match.matched.join( ' · ' )}
+							</div>
+						</>
+					)}
+					{match.missing.length>0&&(
+						<>
+							<div className={cn( 'label',match.matched.length>0&&'mt-4' )}>missing</div>
+							<div className="mt-2.5 text-[12px] leading-[1.9] text-wn">
+								{match.missing.join( ' · ' )}
+							</div>
+						</>
+					)}
+				</div>
+			)}
+
+			{job.description&&(
+				<div className="border-b border-br p-[18px] text-[12px] leading-[1.85] text-dim">
+					{job.description.length>420? `${job.description.slice( 0,420 )}…`:job.description}
+				</div>
+			)}
+
+			<div className="flex gap-2.5 p-[18px]">
+				<Button className="flex-1" onClick={() => onApply( job.id )}>quick apply</Button>
+				<Button variant="outline" onClick={() => onSave( job.id,job.isSaved )}>
+					{job.isSaved? 'saved':'save'}
+				</Button>
+				<Button variant="ghost" className="border border-br" asChild>
+					<a href={job.url} target="_blank" rel="noopener noreferrer" aria-label="Open the original posting">
+						↗
+					</a>
+				</Button>
 			</div>
 		</div>
 	)

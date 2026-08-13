@@ -3,6 +3,37 @@ import { auth } from '@/lib/auth'
 import { jsonCompletion } from '@/lib/ai'
 import { db } from '@/lib/db'
 import { resumeParses } from '@/lib/db/schema'
+import { desc, eq } from 'drizzle-orm'
+
+/**
+ * The user's most recent resume parse. The discover screen scores jobs against
+ * these skills, and the AI tools screen reopens the last parse rather than
+ * making the user paste their resume again.
+ */
+export async function GET() {
+	try {
+		const session = await auth()
+
+		if ( !session?.user?.id ) {
+			return NextResponse.json( { error: 'Unauthorized' }, { status: 401 } )
+		}
+
+		const [ latest ] = await db
+			.select()
+			.from( resumeParses )
+			.where( eq( resumeParses.userId, session.user.id ) )
+			.orderBy( desc( resumeParses.createdAt ) )
+			.limit( 1 )
+
+		return NextResponse.json( latest ?? null )
+	} catch ( error ) {
+		console.error( 'Error fetching resume parse:', error )
+		return NextResponse.json(
+			{ error: 'Failed to fetch resume parse' },
+			{ status: 500 }
+		)
+	}
+}
 
 export async function POST( request: NextRequest ) {
 	try {

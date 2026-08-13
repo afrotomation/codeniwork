@@ -1,15 +1,22 @@
 'use client'
 
-import { Button } from '@/components/ui/button'
-import { Card,CardContent,CardDescription,CardHeader,CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { AuthShell } from '@/components/auth/auth-shell'
 import { usePasskeyAuth } from '@/hooks/use-passkey-auth'
-import { ArrowLeft,Fingerprint,Lock,Mail } from 'lucide-react'
 import { signIn } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect,useState } from 'react'
+
+/**
+ * The design's aside lists what changed "since you last signed in". Nobody is
+ * signed in on this screen, so that would either be fabricated or another
+ * account's pipeline. These are the three promises the product actually makes.
+ */
+const promises: [ string,string ][]=[
+	[ '01','Every application in one place, with its next step' ],
+	[ '02','A queue of what is waiting on you, not a feed' ],
+	[ '03','Deadlines and follow-ups before they go late' ],
+]
 
 export default function SignInPage () {
 	const router=useRouter()
@@ -20,21 +27,21 @@ export default function SignInPage () {
 
 	const callbackUrl='/dashboard'
 
-	useEffect( () => {
-		if ( typeof window!=='undefined' ) {
-			const urlParams=new URLSearchParams( window.location.search )
-			const message=urlParams.get( 'message' )
-			if ( message ) {
-				setSuccessMessage( message )
-				window.history.replaceState( {},document.title,window.location.pathname )
-			}
-		}
-	},[] )
-
 	const [ formData,setFormData ]=useState( {
 		email: '',
 		password: '',
 	} )
+
+	useEffect( () => {
+		if ( typeof window==='undefined' ) return
+
+		const urlParams=new URLSearchParams( window.location.search )
+		const message=urlParams.get( 'message' )
+		if ( message ) {
+			setSuccessMessage( message )
+			window.history.replaceState( {},document.title,window.location.pathname )
+		}
+	},[] )
 
 	const handleInputChange=( e: React.ChangeEvent<HTMLInputElement> ) => {
 		setFormData( {
@@ -61,7 +68,7 @@ export default function SignInPage () {
 			} else {
 				router.push( callbackUrl )
 			}
-		} catch ( error ) {
+		} catch {
 			setError( 'An unexpected error occurred. Please try again.' )
 			setIsLoading( false )
 		}
@@ -87,145 +94,119 @@ export default function SignInPage () {
 					router.push( callbackUrl )
 				}
 			}
-		} catch ( error ) {
-			console.error( 'Passkey authentication error:',error )
+		} catch ( err ) {
+			console.error( 'Passkey authentication error:',err )
 			setError( 'Passkey authentication failed. Please try email and password.' )
 			setIsLoading( false )
 		}
 	}
 
 	return (
-		<div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-			{/* Background decorations */}
-			<div className="absolute inset-0 pointer-events-none">
-				<div className="absolute top-20 left-20 w-96 h-96 bg-gradient-to-br from-violet-500/15 to-indigo-500/15 rounded-full blur-3xl" />
-				<div className="absolute top-40 right-32 w-80 h-80 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-full blur-3xl" />
-				<div className="absolute bottom-32 left-1/3 w-72 h-72 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-full blur-3xl" />
+		<AuthShell
+			aside={
+				<>
+					<div className="mt-auto eyebrow">what codeniwork does</div>
+					<div className="mt-[18px] flex flex-col gap-3.5 text-[12.5px]">
+						{promises.map( ( [ marker,text ] ) => (
+							<div key={marker} className="flex gap-3.5">
+								<span className="w-[26px] flex-none text-ac">{marker}</span>
+								<span>{text}</span>
+							</div>
+						) )}
+					</div>
+					<div className="mt-[26px] h-px bg-br" />
+					<div className="mt-[26px] text-[11.5px] leading-[1.8] text-dim">
+						Your data stays encrypted with your master password. CodeniWork never sees it.
+					</div>
+				</>
+			}
+		>
+			<Link href="/" className="text-[12px] text-dim no-underline transition-colors hover:text-fg">
+				← Back to Home
+			</Link>
+
+			<h1 className="display mt-[38px] text-[30px] font-extralight">Welcome to CodeniWork</h1>
+			<p className="mt-3.5 text-[12.5px] leading-[1.7] text-dim">
+				Sign in to continue tracking your career with CodeniWork
+			</p>
+
+			{successMessage&&(
+				<div className="panel-accent mt-5 px-4 py-3 text-[12px] text-ac">{successMessage}</div>
+			)}
+			{error&&(
+				<div className="mt-5 border border-dg px-4 py-3 text-[12px] text-dg">{error}</div>
+			)}
+
+			{isSupported&&(
+				<>
+					<button
+						type="button"
+						onClick={handlePasskeySignIn}
+						disabled={isLoading}
+						className="mt-[30px] flex justify-between bg-ac p-4 text-left font-mono text-[13px] font-medium text-af transition-colors hover:bg-ac-deep disabled:opacity-50"
+					>
+						<span>Sign In with Passkey</span>
+						<span className="opacity-60">⏎</span>
+					</button>
+
+					<div className="my-[26px] flex items-center gap-3.5">
+						<div className="h-px flex-1 bg-br" />
+						<span className="text-[10.5px] uppercase tracking-[.12em] text-dim">or continue with</span>
+						<div className="h-px flex-1 bg-br" />
+					</div>
+				</>
+			)}
+
+			<form onSubmit={handleCredentialsSignIn} className={isSupported? '':'mt-[30px]'}>
+				<label htmlFor="email" className="block text-[11px] uppercase tracking-[.1em] text-dim">
+					Email
+				</label>
+				<input
+					id="email"
+					name="email"
+					type="email"
+					autoComplete="email"
+					required
+					value={formData.email}
+					onChange={handleInputChange}
+					placeholder="you@example.com"
+					className="mt-[9px] w-full border border-br bg-transparent p-3.5 font-mono text-[13px] text-fg placeholder:text-dim focus:border-ac focus:outline-none"
+				/>
+
+				<label htmlFor="password" className="mt-5 block text-[11px] uppercase tracking-[.1em] text-dim">
+					Password
+				</label>
+				<input
+					id="password"
+					name="password"
+					type="password"
+					autoComplete="current-password"
+					required
+					value={formData.password}
+					onChange={handleInputChange}
+					placeholder="••••••••••••"
+					className="mt-[9px] w-full border border-br bg-transparent p-3.5 font-mono text-[13px] text-fg placeholder:text-dim focus:border-ac focus:outline-none"
+				/>
+
+				<button
+					type="submit"
+					disabled={isLoading}
+					className="mt-6 w-full border border-br bg-transparent p-4 font-mono text-[13px] text-fg transition-colors hover:border-ac hover:text-ac disabled:opacity-50"
+				>
+					{isLoading? 'Signing in…':'Sign In with Email'}
+				</button>
+			</form>
+
+			<div className="mt-auto pt-7 text-[12px] text-dim">
+				Don&apos;t have an account?{' '}
+				<Link href="/auth/signup" className="text-ac no-underline hover:underline">
+					Sign up here
+				</Link>
 			</div>
-
-			<Card className="w-full max-w-md glass-elevated relative z-10">
-				<CardHeader className="text-center space-y-4">
-					<Link href="/" className="inline-flex items-center text-sm text-violet-200/60 hover:text-white mb-4 transition-colors">
-						<ArrowLeft className="w-4 h-4 mr-2" />
-						Back to Home
-					</Link>
-					<div className="w-16 h-16 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-glow-violet">
-						<img src="/favicon.svg" alt="CodeniWork" className="w-10 h-10" />
-					</div>
-					<CardTitle className="text-3xl font-bold text-gradient-heading">
-						Welcome to CodeniWork
-					</CardTitle>
-					<CardDescription className="text-violet-200/60">
-						Sign in to continue tracking your career with CodeniWork
-					</CardDescription>
-				</CardHeader>
-
-				<CardContent className="space-y-6">
-					{/* Error Display */}
-					{error&&(
-						<div className="bg-red-500/10 border border-red-500/20 rounded-card p-4 mb-4">
-							<div className="flex items-center">
-								<div className="flex-shrink-0">
-									<svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-										<path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-									</svg>
-								</div>
-								<div className="ml-3">
-									<p className="text-sm text-red-300">{error}</p>
-								</div>
-							</div>
-						</div>
-					)}
-
-					{/* Passkey Sign In */}
-					{isSupported&&(
-						<div className="space-y-4">
-							<Button
-								onClick={handlePasskeySignIn}
-								disabled={isLoading}
-								variant="success"
-								className="w-full h-12 text-lg font-medium"
-							>
-								<Fingerprint className="w-5 h-5 mr-2" />
-								{isLoading? 'Authenticating...':'Sign In with Passkey'}
-							</Button>
-
-							<div className="relative">
-								<div className="absolute inset-0 flex items-center">
-									<span className="w-full border-t border-white/[0.08]" />
-								</div>
-								<div className="relative flex justify-center text-xs uppercase">
-									<span className="bg-base-50 px-2 text-violet-200/40">Or continue with</span>
-								</div>
-							</div>
-						</div>
-					)}
-
-					{/* Credentials Sign In Form */}
-					<form onSubmit={handleCredentialsSignIn} className="space-y-4">
-						<div className="space-y-2">
-							<Label htmlFor="email">Email</Label>
-							<div className="relative">
-								<Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-violet-300/40 w-4 h-4" />
-								<Input
-									id="email"
-									name="email"
-									type="email"
-									placeholder="Enter your email"
-									value={formData.email}
-									onChange={handleInputChange}
-									className="pl-10"
-									required
-								/>
-							</div>
-						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="password">Password</Label>
-							<div className="relative">
-								<Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-violet-300/40 w-4 h-4" />
-								<Input
-									id="password"
-									name="password"
-									type="password"
-									placeholder="Enter your password"
-									value={formData.password}
-									onChange={handleInputChange}
-									required
-								/>
-							</div>
-						</div>
-
-						<Button
-							type="submit"
-							disabled={isLoading}
-							className="w-full h-12 text-lg font-medium"
-						>
-							{isLoading? 'Signing In...':'Sign In with Email'}
-						</Button>
-					</form>
-
-					{/* Sign Up Link */}
-					<div className="text-center text-sm text-violet-200/60">
-						Don't have an account?{' '}
-						<Link href="/auth/signup" className="text-violet-400 hover:text-violet-300 font-medium transition-colors">
-							Sign up here
-						</Link>
-					</div>
-
-					{/* Terms */}
-					<div className="text-center text-xs text-violet-200/40">
-						By signing in, you agree to our{' '}
-						<Link href="/terms" className="text-violet-400/70 hover:text-violet-300">
-							Terms of Service
-						</Link>{' '}
-						and{' '}
-						<Link href="/privacy" className="text-violet-400/70 hover:text-violet-300">
-							Privacy Policy
-						</Link>
-					</div>
-				</CardContent>
-			</Card>
-		</div>
+			<div className="mt-3 text-[11px] leading-[1.7] text-dim opacity-75">
+				By signing in, you agree to our <span className="text-dim">Terms of Service</span> and{' '}
+				<span className="text-dim">Privacy Policy</span>
+			</div>
+		</AuthShell>
 	)
 }

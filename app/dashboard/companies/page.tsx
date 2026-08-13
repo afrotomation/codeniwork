@@ -1,13 +1,11 @@
 'use client'
 
+import { AddApplicationButton } from '@/components/dashboard/add-application-button'
 import { EditCompanyDialog } from '@/components/dashboard/edit-company-dialog'
 import { DashboardHeader } from '@/components/dashboard/header'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card,CardContent,CardHeader,CardTitle } from '@/components/ui/card'
-import { LoadingSpinner } from '@/components/ui/loading-spinner'
-import { Briefcase,Building2,Edit,Globe,MapPin,Users } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { useApplications } from '@/hooks/use-applications'
+import { cn } from '@/lib/utils'
+import { useEffect,useMemo,useState } from 'react'
 
 interface Company {
 	id: string
@@ -21,24 +19,57 @@ interface Company {
 	applicationsCount: number
 }
 
+/** Design column rhythm: company, industry, location, size, apps, reply rate. */
+const COLUMNS='grid-cols-[1fr_130px_118px_92px_92px_110px]'
+
+/** How many rows before the register defers to "show all". */
+const PREVIEW_ROWS=9
+
+/** A reply is anything that moved past the initial send. */
+const REPLIED_STAGES=[ 'screening','interview','offer' ]
+
+function stripScheme ( website: string|null ): string {
+	if ( !website ) return '—'
+	return website.replace( /^https?:\/\//,'' ).replace( /\/$/,'' )
+}
+
 export default function CompaniesPage () {
+	const { applications,refresh }=useApplications()
 	const [ companies,setCompanies ]=useState<Company[]>( [] )
 	const [ isLoading,setIsLoading ]=useState( true )
-	const [ editingCompany,setEditingCompany ]=useState<Company|null>( null )
-	const [ isEditDialogOpen,setIsEditDialogOpen ]=useState( false )
+	const [ editing,setEditing ]=useState<Company|null>( null )
+	const [ selected,setSelected ]=useState<string|null>( null )
+	const [ showAll,setShowAll ]=useState( false )
 
 	useEffect( () => {
 		fetchCompanies()
 	},[] )
 
+	// E edits the selected row, as the rail promises.
+	useEffect( () => {
+		const onKeyDown=( event: KeyboardEvent ) => {
+			if ( event.metaKey||event.ctrlKey||event.altKey ) return
+			if ( event.key!=='e'&&event.key!=='E' ) return
+
+			const target=event.target as HTMLElement|null
+			if ( target?.isContentEditable ) return
+			if ( target&&/^(INPUT|TEXTAREA|SELECT)$/.test( target.tagName ) ) return
+
+			const company=companies.find( item => item.id===selected )
+			if ( !company ) return
+			event.preventDefault()
+			setEditing( company )
+		}
+
+		window.addEventListener( 'keydown',onKeyDown )
+		return () => window.removeEventListener( 'keydown',onKeyDown )
+	},[ companies,selected ] )
+
 	const fetchCompanies=async () => {
 		try {
 			const response=await fetch( '/api/dashboard/companies' )
-			if ( !response.ok ) {
-				throw new Error( 'Failed to fetch companies' )
-			}
-			const data=await response.json()
-			setCompanies( data )
+			if ( !response.ok ) throw new Error( 'Failed to fetch companies' )
+			setCompanies( await response.json() )
 		} catch ( error ) {
 			console.error( 'Error fetching companies:',error )
 		} finally {
@@ -46,128 +77,132 @@ export default function CompaniesPage () {
 		}
 	}
 
-	const handleEditCompany=( company: Company ) => {
-		setEditingCompany( company )
-		setIsEditDialogOpen( true )
-	}
+	// Reply rate is a property of this user's applications, not of the company
+	// record, so it is derived here rather than stored.
+	const replyRates=useMemo( () => {
+		const rates=new Map<string,number|null>()
+		for ( const company of companies ) {
+			const mine=applications.filter( app => app.company.id===company.id )
+			if ( mine.length===0 ) {
+				rates.set( company.id,null )
+				continue
+			}
+			const replied=mine.filter( app => REPLIED_STAGES.includes( app.status ) ).length
+			rates.set( company.id,Math.round( ( replied/mine.length )*100 ) )
+		}
+		return rates
+	},[ companies,applications ] )
 
-	const handleCompanyUpdated=async () => {
-		await fetchCompanies()
-	}
-
-	if ( isLoading ) {
-		return (
-			<div className="min-h-screen">
-				<DashboardHeader />
-				<div className="p-6">
-					<div className="flex items-center justify-center h-64">
-						<LoadingSpinner />
-					</div>
-				</div>
-			</div>
-		)
-	}
+	const rows=showAll? companies:companies.slice( 0,PREVIEW_ROWS )
+	const totalApplications=applications.length
 
 	return (
-		<div className="min-h-screen">
-			<DashboardHeader />
-			<div className="p-6">
-				<div className="mb-8">
-					<h1 className="text-4xl font-bold text-gradient-heading mb-2">Companies</h1>
-					<p className="text-violet-300/60">Explore companies and their opportunities</p>
-				</div>
+		<div>
+			<DashboardHeader
+				eyebrow="companies"
+				title={
+					isLoading
+						? 'Loading companies'
+						:`${companies.length} ${companies.length===1? 'company':'companies'}, ${totalApplications} application${totalApplications===1? '':'s'}`
+				}
+				align="end"
+				action={
+					/* Companies are created through an application, not on their own —
+					   there is no endpoint that adds a bare company record. */
+					<AddApplicationButton
+						variant="default"
+						label="+ add company"
+						onApplicationAdded={async () => {
+							await refresh()
+							await fetchCompanies()
+						}}
+					/>
+				}
+			/>
 
-				{companies.length===0? (
-					<div className="text-center py-12">
-						<Building2 className="w-16 h-16 text-violet-300/40 mx-auto mb-4" />
-						<h3 className="text-lg font-medium text-white mb-2">No companies yet</h3>
-						<p className="text-violet-200/70">Companies will appear here when you add job applications.</p>
-					</div>
-				):(
-					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-						{companies.map( ( company,index ) => (
-							<Card key={company.id} className="glass glass-interactive animate-fade-up" style={{ animationDelay: `${index*80}ms` }}>
-								<CardHeader className="pb-3">
-									<div className="flex items-start justify-between">
-										<div className="flex items-center space-x-3">
-											<div className="w-12 h-12 rounded-lg overflow-hidden bg-white/[0.06] border border-white/[0.08] flex items-center justify-center">
-												{company.logo? (
-													<img
-														src={company.logo}
-														alt={`${company.name} logo`}
-														className="w-full h-full object-cover"
-														onError={( e ) => {
-															const target=e.target as HTMLImageElement
-															target.style.display='none'
-															target.nextElementSibling?.classList.remove( 'hidden' )
-														}}
-													/>
-												):null}
-												<Building2 className="w-6 h-6 text-violet-300/50" />
-											</div>
-											<div>
-												<CardTitle className="text-white text-lg">{company.name}</CardTitle>
-												{company.industry&&(
-													<Badge variant="secondary">
-														{company.industry}
-													</Badge>
-												)}
-											</div>
-										</div>
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => handleEditCompany( company )}
-											className="text-violet-200/70 hover:text-white hover:bg-white/[0.06] p-2"
-										>
-											<Edit className="w-4 h-4" />
-										</Button>
-									</div>
-								</CardHeader>
-								<CardContent className="space-y-3">
-									{company.location&&(
-										<div className="flex items-center space-x-2 text-violet-200/70">
-											<MapPin className="w-4 h-4" />
-											<span className="text-sm">{company.location}</span>
-										</div>
-									)}
-									{company.website&&(
-										<div className="flex items-center space-x-2 text-violet-200/70">
-											<Globe className="w-4 h-4" />
-											<a href={company.website} target="_blank" rel="noopener noreferrer" className="text-sm hover:text-white transition-colors">
-												{company.website.replace( 'https://','' )}
-											</a>
-										</div>
-									)}
-									{company.size&&(
-										<div className="flex items-center space-x-2 text-violet-200/70">
-											<Users className="w-4 h-4" />
-											<span className="text-sm">{company.size}</span>
-										</div>
-									)}
-									<div className="flex items-center space-x-2 text-violet-200/70">
-										<Briefcase className="w-4 h-4" />
-										<span className="text-sm">{company.applicationsCount} application{company.applicationsCount!==1? 's':''}</span>
-									</div>
-									{company.description&&(
-										<p className="text-sm text-violet-200/70 bg-white/[0.04] p-3 rounded-lg border border-white/[0.06]">
-											{company.description}
-										</p>
-									)}
-								</CardContent>
-							</Card>
-						) )}
-					</div>
-				)}
-
-				{/* Edit Company Dialog */}
-				<EditCompanyDialog
-					open={isEditDialogOpen}
-					onOpenChange={setIsEditDialogOpen}
-					company={editingCompany}
-					onCompanyUpdated={handleCompanyUpdated}
-				/>
+			<div className={cn( 'label mt-7 grid border-b border-br pb-2.5',COLUMNS )}>
+				<div>company</div>
+				<div>industry</div>
+				<div>location</div>
+				<div>size</div>
+				<div>apps</div>
+				<div>reply rate</div>
 			</div>
+
+			{isLoading? (
+				Array.from( { length: 6 } ).map( ( _,i ) => (
+					<div key={i} className={cn( 'row-rule grid items-center py-[17px]',COLUMNS )}>
+						<div className="skeleton h-4 w-1/2" />
+						<div className="skeleton h-3 w-20" />
+						<div className="skeleton h-3 w-16" />
+						<div className="skeleton h-3 w-10" />
+						<div className="skeleton h-3 w-6" />
+						<div className="skeleton h-3 w-12" />
+					</div>
+				) )
+			):companies.length===0? (
+				<div className="border-b border-br py-10 text-center text-[12.5px] text-dim">
+					No companies yet. They are created with your first application.
+				</div>
+			):(
+				rows.map( company => {
+					const rate=replyRates.get( company.id )??null
+					const isSelected=selected===company.id
+
+					return (
+						<button
+							key={company.id}
+							type="button"
+							onClick={() => setSelected( company.id )}
+							onDoubleClick={() => setEditing( company )}
+							className={cn(
+								'row-rule grid w-full items-center py-[17px] text-left text-[13px] transition-colors',
+								COLUMNS,
+								isSelected? 'bg-ft':'hover:bg-ft'
+							)}
+						>
+							<div className="truncate pr-4">
+								<span className="display text-[14.5px] text-fg">{company.name}</span>
+								<div className="mt-[5px] text-[11.5px] text-dim">{stripScheme( company.website )}</div>
+							</div>
+							<div className="text-dim">{company.industry??'—'}</div>
+							<div className="text-dim">{company.location??'—'}</div>
+							<div className="text-dim">{company.size??'—'}</div>
+							<div className="text-fg">{company.applicationsCount}</div>
+							<div className={rate!==null&&rate>=50? 'text-ac':'text-dim'}>
+								{rate===null? '—':`${rate}%`}
+							</div>
+						</button>
+					)
+				} )
+			)}
+
+			{companies.length>0&&(
+				<div className="mt-[18px] text-[12px] text-dim">
+					{rows.length} / {companies.length} shown
+					{companies.length>PREVIEW_ROWS&&(
+						<>
+							{' · '}
+							<button
+								type="button"
+								onClick={() => setShowAll( value => !value )}
+								className="text-ac hover:underline"
+							>
+								{showAll? 'show fewer':'show all'}
+							</button>
+						</>
+					)}
+				</div>
+			)}
+
+			<EditCompanyDialog
+				open={editing!==null}
+				onOpenChange={next => {
+					if ( !next ) setEditing( null )
+				}}
+				company={editing}
+				onCompanyUpdated={fetchCompanies}
+			/>
 		</div>
 	)
 }

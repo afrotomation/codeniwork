@@ -1,270 +1,268 @@
 'use client'
 
 import { DashboardHeader } from '@/components/dashboard/header'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card,CardContent,CardHeader,CardTitle } from '@/components/ui/card'
-import { LoadingSpinner } from '@/components/ui/loading-spinner'
-import { BarChart3,Building2,CheckCircle,RefreshCw,Target,TrendingDown,TrendingUp } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { cn } from '@/lib/utils'
+import { useCallback,useEffect,useState } from 'react'
 
-interface AnalyticsData {
-	stats: Array<{
-		title: string
-		value: string
-		change: string
-		trend: 'up'|'down'
-		icon: string
-		color: string
-	}>
-	monthlyData: Array<{
-		month: string
-		applications: number
-		interviews: number
-		offers: number
-	}>
-	topCompanies: Array<{
-		name: string
-		logo: string|null
-		applications: number
-		responseRate: string
-	}>
+interface MonthProgress {
+	label: string
+	year: number
+	applied: number
+	interviews: number
+	offers: number
+}
+
+interface Analytics {
+	total: number
+	responseRate: number
+	interviewRate: number
+	offerRate: number
+	avgDaysToReply: number|null
+	deltas: { responseRate: number; interviewRate: number; offerRate: number }
+	months: MonthProgress[]
+	funnel: { stage: string; count: number; share: number }[]
+	topCompanies: { name: string; applications: number; replyRate: number }[]
+}
+
+function Delta ( { points,unit='pts' }: { points: number; unit?: string } ) {
+	if ( points===0 ) return <span className="text-dim">level with last month</span>
+	const better=points>0
+	return (
+		<span className={better? 'text-ac':'text-wn'}>
+			{better? '+':''}{points} {unit} from last month
+		</span>
+	)
+}
+
+function StatCell ( {
+	label,
+	value,
+	footnote,
+}: {
+	label: string
+	value: string
+	footnote: React.ReactNode
+} ) {
+	return (
+		<div className="border-r border-b border-br p-5">
+			<div className="label">{label}</div>
+			<div className="mt-3.5 text-[30px] leading-none">{value}</div>
+			<div className="mt-[9px] text-[11.5px]">{footnote}</div>
+		</div>
+	)
 }
 
 export default function AnalyticsPage () {
-	const [ analyticsData,setAnalyticsData ]=useState<AnalyticsData|null>( null )
+	const [ data,setData ]=useState<Analytics|null>( null )
 	const [ isLoading,setIsLoading ]=useState( true )
 	const [ error,setError ]=useState<string|null>( null )
 
-	useEffect( () => {
-		fetchAnalytics()
-	},[] )
-
-	const fetchAnalytics=async () => {
+	const load=useCallback( async () => {
+		setIsLoading( true )
 		try {
-			setIsLoading( true )
-			setError( null )
-
 			const response=await fetch( '/api/dashboard/analytics' )
-			if ( !response.ok ) {
-				throw new Error( 'Failed to fetch analytics data' )
-			}
-
-			const data=await response.json()
-			setAnalyticsData( data )
-		} catch ( error ) {
-			console.error( 'Error fetching analytics:',error )
-			setError( error instanceof Error? error.message:'Failed to fetch analytics' )
+			if ( !response.ok ) throw new Error( 'Failed to fetch analytics' )
+			setData( await response.json() )
+			setError( null )
+		} catch ( err ) {
+			console.error( 'Error fetching analytics:',err )
+			setError( 'could not load analytics' )
 		} finally {
 			setIsLoading( false )
 		}
-	}
+	},[] )
 
-	const handleRefresh=() => {
-		fetchAnalytics()
-	}
+	useEffect( () => {
+		load()
+	},[ load ] )
 
-	const getIconComponent=( iconName: string ) => {
-		const iconMap: { [ key: string ]: any }={
-			Target,
-			TrendingUp,
-			CheckCircle,
-			TrendingDown
+	useEffect( () => {
+		const onKeyDown=( event: KeyboardEvent ) => {
+			if ( event.metaKey||event.ctrlKey||event.altKey ) return
+			if ( event.key!=='r'&&event.key!=='R' ) return
+
+			const target=event.target as HTMLElement|null
+			if ( target?.isContentEditable ) return
+			if ( target&&/^(INPUT|TEXTAREA|SELECT)$/.test( target.tagName ) ) return
+
+			event.preventDefault()
+			load()
 		}
-		return iconMap[ iconName ]||Target
-	}
 
-	if ( isLoading ) {
-		return (
-			<div className="min-h-screen">
-				<DashboardHeader />
-				<div className="p-6">
-					<div className="flex items-center justify-center h-64">
-						<LoadingSpinner />
-					</div>
-				</div>
-			</div>
-		)
-	}
+		window.addEventListener( 'keydown',onKeyDown )
+		return () => window.removeEventListener( 'keydown',onKeyDown )
+	},[ load ] )
 
-	if ( error ) {
-		return (
-			<div className="min-h-screen">
-				<DashboardHeader />
-				<div className="p-6">
-					<div className="text-center py-12">
-						<BarChart3 className="w-16 h-16 text-red-400 mx-auto mb-4" />
-						<h3 className="text-lg font-medium text-white mb-2">Error Loading Analytics</h3>
-						<p className="text-violet-200/70 mb-4">{error}</p>
-						<Button onClick={handleRefresh}>
-							<RefreshCw className="w-4 h-4 mr-2" />
-							Try Again
-						</Button>
-					</div>
-				</div>
-			</div>
-		)
-	}
-
-	if ( !analyticsData ) {
-		return (
-			<div className="min-h-screen">
-				<DashboardHeader />
-				<div className="p-6">
-					<div className="text-center py-12">
-						<BarChart3 className="w-16 h-16 text-violet-300/40 mx-auto mb-4" />
-						<h3 className="text-lg font-medium text-white mb-2">No Analytics Data</h3>
-						<p className="text-violet-200/70">Start adding job applications to see your analytics.</p>
-					</div>
-				</div>
-			</div>
-		)
-	}
+	// Bars are scaled against the busiest month so the shape stays readable.
+	const peak=data? Math.max( 1,...data.months.map( month => month.applied ) ):1
+	const span=data
+		? `${data.months.length} months of searching`
+		:'Analytics'
 
 	return (
-		<div className="min-h-screen">
-			<DashboardHeader />
-			<div className="p-6">
-				<div className="mb-8 flex items-center justify-between">
-					<div>
-						<h1 className="text-4xl font-bold text-gradient-heading mb-2">Analytics</h1>
-						<p className="text-violet-300/60">Track your job search progress and insights</p>
-					</div>
-					<Button
-						onClick={handleRefresh}
-						variant="outline"
-					>
-						<RefreshCw className="w-4 h-4 mr-2" />
-						Refresh
+		<div>
+			<DashboardHeader
+				eyebrow="analytics"
+				title={isLoading&&!data? 'Loading analytics':span}
+				align="end"
+				action={
+					<Button variant="ghost" className="border border-br" onClick={load} shortcut="R">
+						refresh
 					</Button>
-				</div>
+				}
+			/>
 
-				{/* Key Statistics */}
-				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-					{analyticsData.stats.map( ( stat,index ) => {
-						const Icon=getIconComponent( stat.icon )
-						return (
-							<Card key={stat.title} className="glass glass-interactive animate-fade-up" style={{ animationDelay: `${index*80}ms` }}>
-								<CardContent className="p-6">
-									<div className="flex items-center justify-between">
-										<div>
-											<p className="text-violet-200/70 text-sm font-medium">{stat.title}</p>
-											<p className="text-white text-2xl font-bold text-gradient-primary">{stat.value}</p>
-										</div>
-										<div className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-lg flex items-center justify-center`}>
-											<Icon className="w-6 h-6 text-white" />
-										</div>
-									</div>
-									<div className="flex items-center mt-4">
-										{stat.trend==='up'? (
-											<TrendingUp className="w-4 h-4 text-emerald-400 mr-2" />
-										):(
-											<TrendingDown className="w-4 h-4 text-red-400 mr-2" />
-										)}
-										<span className={`text-sm ${stat.trend==='up'? 'text-emerald-400':'text-red-400'}`}>
-											{stat.change} from last month
+			{error&&(
+				<div className="panel-warn mt-5 px-5 py-4 text-[12.5px] text-wn">{error}</div>
+			)}
+
+			{!isLoading&&!data&&(
+				<div className="mt-7 border border-br py-10 text-center text-[12.5px] text-dim">
+					Nothing to chart yet.
+				</div>
+			)}
+
+			{( isLoading||data )&&(
+			<div className="mt-7 grid grid-cols-1 border-t border-l border-br sm:grid-cols-2 xl:grid-cols-4">
+				{isLoading&&!data? (
+					Array.from( { length: 4 } ).map( ( _,i ) => (
+						<div key={i} className="border-r border-b border-br p-5">
+							<div className="skeleton h-3 w-24" />
+							<div className="skeleton mt-3.5 h-[30px] w-16" />
+							<div className="skeleton mt-[9px] h-3 w-32" />
+						</div>
+					) )
+				):data? (
+					<>
+						<StatCell
+							label="response rate"
+							value={`${data.responseRate}%`}
+							footnote={<Delta points={data.deltas.responseRate} />}
+						/>
+						<StatCell
+							label="interview rate"
+							value={`${data.interviewRate}%`}
+							footnote={<Delta points={data.deltas.interviewRate} />}
+						/>
+						<StatCell
+							label="offer rate"
+							value={`${data.offerRate}%`}
+							footnote={<Delta points={data.deltas.offerRate} />}
+						/>
+						<StatCell
+							label="avg days to reply"
+							value={data.avgDaysToReply===null? '—':String( data.avgDaysToReply )}
+							footnote={
+								<span className="text-dim">
+									{data.avgDaysToReply===null
+										? 'no replies logged yet'
+										:'across every logged reply'}
+								</span>
+							}
+						/>
+					</>
+				):null}
+			</div>
+			)}
+
+			{( isLoading||data )&&(
+			<div className="mt-[26px] grid grid-cols-1 gap-[26px] xl:grid-cols-[minmax(0,1fr)_380px]">
+				<div className="border border-br p-5">
+					<div className="text-[10.5px] uppercase tracking-[.12em] text-dim">monthly progress</div>
+
+					<div className="mt-5 flex flex-col gap-4">
+						{isLoading&&!data? (
+							Array.from( { length: 6 } ).map( ( _,i ) => (
+								<div key={i}>
+									<div className="skeleton h-3 w-full" />
+									<div className="skeleton mt-2 h-[7px] w-full" />
+								</div>
+							) )
+						):(
+							data?.months.map( month => (
+								<div key={`${month.label}-${month.year}`}>
+									<div className="flex justify-between gap-3 text-[12px]">
+										<span>{month.label}</span>
+										<span className="text-dim">
+											{month.applied} applied · {month.interviews}{' '}
+											{month.interviews===1? 'interview':'interviews'} · {month.offers}{' '}
+											{month.offers===1? 'offer':'offers'}
 										</span>
 									</div>
-								</CardContent>
-							</Card>
-						)
-					} )}
+									<div className="mt-2 flex h-[7px] gap-[2px]">
+										<div className="bg-ac" style={{ width: `${( month.applied/peak )*70}%` }} />
+										<div
+											className="bg-ac opacity-50"
+											style={{ width: `${( month.interviews/peak )*70}%` }}
+										/>
+										<div className="bg-fg" style={{ width: `${( month.offers/peak )*70}%` }} />
+										<div className="flex-1 bg-ft" />
+									</div>
+								</div>
+							) )
+						)}
+					</div>
+
+					<div className="mt-[22px] flex flex-wrap gap-[18px] text-[11px] text-dim">
+						<span className="flex items-center gap-1.5">
+							<span className="inline-block h-[7px] w-[9px] bg-ac" />applied
+						</span>
+						<span className="flex items-center gap-1.5">
+							<span className="inline-block h-[7px] w-[9px] bg-ac opacity-50" />interviews
+						</span>
+						<span className="flex items-center gap-1.5">
+							<span className="inline-block h-[7px] w-[9px] bg-fg" />offers
+						</span>
+					</div>
 				</div>
 
-				<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-					{/* Monthly Progress */}
-					<Card className="glass">
-						<CardHeader>
-							<CardTitle className="text-white flex items-center space-x-2">
-								<BarChart3 className="w-5 h-5" />
-								<span>Monthly Progress</span>
-							</CardTitle>
-						</CardHeader>
-						<CardContent>
-							{analyticsData.monthlyData.length===0? (
-								<div className="text-center py-8">
-									<BarChart3 className="w-12 h-12 text-violet-300/40 mx-auto mb-2" />
-									<p className="text-violet-200/70">No monthly data available</p>
+				<div className="border border-br p-5">
+					{/* The design shows replies by source. Applications carry no source
+					    field, so this is the stage funnel — the same question the panel
+					    answers, asked of data that exists. */}
+					<div className="text-[10.5px] uppercase tracking-[.12em] text-dim">where things stand</div>
+					<div className="mt-[18px] flex flex-col">
+						{data?.funnel
+							.filter( entry => entry.count>0 )
+							.map( ( entry,index,visible ) => (
+								<div
+									key={entry.stage}
+									className={cn(
+										'flex justify-between py-[13px]',
+										index<visible.length-1&&'border-b border-ft'
+									)}
+								>
+									<span>{entry.stage}</span>
+									<span className={entry.stage==='offer'? 'text-ac':'text-fg'}>
+										{entry.count} · {entry.share}%
+									</span>
 								</div>
-							):(
-								<div className="space-y-4">
-									{analyticsData.monthlyData.map( ( data,index ) => (
-										<div key={data.month} className="flex items-center justify-between p-3 bg-white/[0.04] rounded-lg border border-white/[0.08] animate-fade-up" style={{ animationDelay: `${index*50}ms` }}>
-											<span className="text-white font-medium">{data.month}</span>
-											<div className="flex items-center space-x-6">
-												<div className="text-center">
-													<p className="text-violet-200/70 text-xs">Applications</p>
-													<p className="text-white font-semibold">{data.applications}</p>
-												</div>
-												<div className="text-center">
-													<p className="text-purple-300/70 text-xs">Interviews</p>
-													<p className="text-white font-semibold">{data.interviews}</p>
-												</div>
-												<div className="text-center">
-													<p className="text-emerald-300/70 text-xs">Offers</p>
-													<p className="text-white font-semibold">{data.offers}</p>
-												</div>
-											</div>
-										</div>
-									) )}
-								</div>
-							)}
-						</CardContent>
-					</Card>
+							) )}
+						{data&&data.total===0&&(
+							<div className="py-[13px] text-[12px] text-dim">Nothing tracked yet.</div>
+						)}
+					</div>
 
-					{/* Top Companies */}
-					<Card className="glass">
-						<CardHeader>
-							<CardTitle className="text-white flex items-center space-x-2">
-								<Target className="w-5 h-5" />
-								<span>Top Companies</span>
-							</CardTitle>
-						</CardHeader>
-						<CardContent>
-							{analyticsData.topCompanies.length===0? (
-								<div className="text-center py-8">
-									<Building2 className="w-12 h-12 text-violet-300/40 mx-auto mb-2" />
-									<p className="text-violet-200/70">No company data available</p>
-								</div>
-							):(
-								<div className="space-y-4">
-									{analyticsData.topCompanies.map( ( company,index ) => (
-										<div key={company.name} className="flex items-center justify-between p-3 bg-white/[0.04] rounded-lg border border-white/[0.08] animate-fade-up" style={{ animationDelay: `${index*50}ms` }}>
-											<div className="flex items-center space-x-3">
-												<div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
-													{index+1}
-												</div>
-												<div className="flex items-center space-x-2">
-													{company.logo? (
-														<img
-															src={company.logo}
-															alt={`${company.name} logo`}
-															className="w-6 h-6 rounded object-cover"
-															onError={( e ) => {
-																const target=e.target as HTMLImageElement
-																target.style.display='none'
-															}}
-														/>
-													):(
-														<Building2 className="w-5 h-5 text-violet-300/40" />
-													)}
-													<div>
-														<p className="text-white font-medium">{company.name}</p>
-														<p className="text-violet-200/70 text-sm">{company.applications} application{company.applications!==1? 's':''}</p>
-													</div>
-												</div>
-											</div>
-											<Badge className="bg-emerald-500/15 text-emerald-300 border-emerald-400/30">
-												{company.responseRate}
-											</Badge>
-										</div>
-									) )}
-								</div>
-							)}
-						</CardContent>
-					</Card>
+					<div className="mt-[22px] border-t border-br pt-5 text-[10.5px] uppercase tracking-[.12em] text-dim">
+						most applied to
+					</div>
+					<div className="mt-3.5 flex flex-col gap-[11px] text-[12.5px]">
+						{data?.topCompanies.map( company => (
+							<div key={company.name} className="flex justify-between gap-3">
+								<span className="truncate">{company.name}</span>
+								<span className="flex-none text-dim">
+									{company.applications} app{company.applications===1? '':'s'} · {company.replyRate}%
+								</span>
+							</div>
+						) )}
+						{data&&data.topCompanies.length===0&&(
+							<span className="text-dim">No companies yet.</span>
+						)}
+					</div>
 				</div>
 			</div>
+			)}
 		</div>
 	)
 }

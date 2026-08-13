@@ -71,9 +71,15 @@ const NUMBER_WORDS=[
 	'Eighteen','Nineteen','Twenty',
 ]
 
+/** A bare date with no time — parsed as UTC by `new Date`, which shifts a day west of Greenwich. */
+const DATE_ONLY=/^\d{4}-\d{2}-\d{2}$/
+
 export function toDate ( value: Date|string|null|undefined ): Date|null {
 	if ( !value ) return null
-	const date=typeof value==='string'? new Date( value ):value
+	if ( typeof value!=='string' ) return isNaN( value.getTime() )? null:value
+
+	// Anchor bare dates to local midnight so they name the day they say.
+	const date=new Date( DATE_ONLY.test( value )? `${value}T00:00:00`:value )
 	return isNaN( date.getTime() )? null:date
 }
 
