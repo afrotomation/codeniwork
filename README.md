@@ -1,230 +1,134 @@
-# 🎨 CodeniWork - Job Application Tracker
+# CodeniWork — Job Application Tracker
 
-A beautiful, modern job application tracker built with Next.js 15.5, featuring a colorful Clean My Mac-inspired interface with a comprehensive sidebar navigation system. **Powered by CodeniWork** - your trusted partner in career development.
+A job search console. Every application in one place with its next step, a queue of what is actually waiting on you, and deadlines surfaced before they go late.
 
-[![Preview](https://api.microlink.io/?url=https%3A%2F%2Fcodeniwork.tioye.dev&screenshot=true&meta=false&embed=screenshot.url&screenshot.delay=4000)](https://codeniwork.tioye.dev)
+[![Preview](https://api.microlink.io/?url=https%3A%2F%2Fcodeniwork.afrotomation.com&screenshot=true&meta=false&embed=screenshot.url&colorScheme=dark&screenshot.delay=4000)](https://codeniwork.afrotomation.com)
 
-🌍 **Live:** [codeniwork.tioye.dev](https://codeniwork.tioye.dev)
+🌍 **Live:** [codeniwork.afrotomation.com](https://codeniwork.afrotomation.com)
+&nbsp;·&nbsp; [![release](https://img.shields.io/github/v/release/afrotomation/codeniwork?label=release&color=4a7c37)](https://github.com/afrotomation/codeniwork/releases)
 
-## ✨ Features
+## Design
 
-### 🎯 **Core Functionality**
-- **Job Application Management** - Track applications, companies, and interview progress
-- **Beautiful Dashboard** - Colorful statistics cards with real-time data
-- **Smart Organization** - Categorize by status, priority, and company
-- **Search & Filter** - Find applications quickly with advanced search
-- **Notes & Tracking** - Add detailed notes and follow-up reminders
+The interface is a console: warm charcoal or warm paper, IBM Plex Mono for the body with Sora for display type, and a single moss accent that only marks things that need a decision. Square, flat, hairline rules — no cards, no shadows, no gradients.
 
-### 🎨 **Design Features**
-- **Colorful Background** - Beautiful gradient backgrounds with floating orbs and animated elements
-- **Glass Morphism** - Modern translucent cards with backdrop blur effects
-- **Responsive Sidebar** - Collapsible navigation with smooth animations
-- **Clean My Mac Inspired** - Colorful, playful interface with smooth transitions
-- **Dark Mode Ready** - Optimized for both light and dark themes
+Both palettes ship. The theme follows `prefers-color-scheme` until you pick a side from the sidebar, after which the choice persists and is applied before first paint.
 
-### 🚀 **Technical Features**
-- **Next.js 15.5** - Latest React framework with App Router
-- **TypeScript** - Full type safety and better development experience
-- **Tailwind CSS** - Utility-first CSS framework with custom color palette
-- **shadcn/ui** - Beautiful, accessible UI components
-- **Drizzle ORM** - Type-safe database operations
-- **NextAuth.js** - Secure authentication with OAuth providers
-- **NeonDB** - Serverless PostgreSQL database
+It is keyboard-first:
 
-## 🛠️ Tech Stack
+| Key | Does |
+| --- | --- |
+| `1`–`0` | Jump between sections |
+| `N` | New application |
+| `J` / `K` / `↵` | Move down / up / open a pipeline row |
+| `/` | Focus the filter on any screen that has one |
+| `E` | Edit the selected row |
+| `T` / `←` / `→` | Today / previous / next month on the calendar |
+| `⌘K` | Command line on quick actions |
+| `⌘↵` | Run the open AI tool |
 
-- **Frontend**: Next.js 15.5, React 18, TypeScript
-- **Styling**: Tailwind CSS, shadcn/ui components
-- **Database**: NeonDB (PostgreSQL) with Drizzle ORM
-- **Authentication**: NextAuth.js (Google, GitHub OAuth)
-- **Forms**: React Hook Form with Zod validation
-- **Icons**: Lucide React
-- **Deployment**: Self-hosted k3s (Cloudflare tunnel + ArgoCD GitOps)
+## Screens
 
-## 🚀 Quick Start
+| Route | What it is |
+| --- | --- |
+| `/dashboard` | The pipeline: stats strip, action queue, and the table ordered by what needs answering soonest |
+| `/dashboard/discover` | Jobs from three boards, scored against your parsed resume |
+| `/dashboard/applications` | Every application, filtered from a command line (`stage:open sort:next-step`), rows expand in place |
+| `/dashboard/companies` | A register with reply rate per company |
+| `/dashboard/calendar` | Month grid, the next seven days, and anything overdue |
+| `/dashboard/analytics` | Response / interview / offer rates with month-over-month deltas, six months of progress, the stage funnel |
+| `/dashboard/documents` | Resumes and cover letters by version |
+| `/dashboard/contacts` | People, ordered by who you have not spoken to |
+| `/dashboard/ai-tools` | Parse resume, score match, cover letter, interview prep |
+| `/dashboard/quick-actions` | Everything by keystroke |
+| `/profile` | Account, passkeys, encryption, data export |
 
-### Prerequisites
-- Node.js 18+ 
-- pnpm (recommended) or npm
-- NeonDB account (free tier available)
+Filters are a query language rather than a form — `stage:`, `remote:`, `sort:` and `match:>70` narrow, anything else is free text.
 
-### Installation
+## Stack
 
-1. **Clone the repository**
-   ```bash
-   git clone <your-repo-url>
-   cd codeniwork
-   ```
+- **Next.js 16** (App Router) and **React 19**
+- **TypeScript**, **Tailwind CSS v4** (CSS-first config, no `tailwind.config.js`)
+- **PostgreSQL** via **Drizzle ORM** on the `node-postgres` driver
+- **NextAuth.js v5** — email/password credentials plus WebAuthn passkeys
+- **Bun** for install and scripts; Docker `standalone` output for deployment
 
-2. **Install dependencies**
-   ```bash
-   pnpm install
-   ```
+## Quick start
 
-3. **Set up environment variables**
-   ```bash
-   cp env.example .env.local
-   ```
-   
-   Fill in your credentials in `.env.local`:
-   ```env
-   DATABASE_URL=your_neon_db_connection_string
-   NEXTAUTH_URL=http://localhost:3000
-   NEXTAUTH_SECRET=your_random_secret_key
-   GOOGLE_CLIENT_ID=your_google_oauth_client_id
-   GOOGLE_CLIENT_SECRET=your_google_oauth_client_secret
-   GITHUB_ID=your_github_oauth_app_id
-   GITHUB_SECRET=your_github_oauth_app_secret
-   ```
+Requires [Bun](https://bun.sh) and a PostgreSQL database.
 
-4. **Set up the database**
-   ```bash
-   pnpm db:generate
-   pnpm db:push
-   ```
-
-5. **Start the development server**
-   ```bash
-   pnpm dev
-   ```
-
-6. **Open your browser**
-   Navigate to [http://localhost:3000](http://localhost:3000)
-
-## 🎨 Customization
-
-### Colors & Themes
-The application uses a custom color palette inspired by Clean My Mac:
-
-```css
-/* Custom colors defined in tailwind.config.js */
-success: { 50: '#f0fdf4', 500: '#22c55e', 600: '#16a34a' }
-warning: { 50: '#fffbeb', 500: '#f59e0b', 600: '#d97706' }
-info: { 50: '#eff6ff', 500: '#3b82f6', 600: '#2563eb' }
-purple: { 50: '#faf5ff', 500: '#a855f7', 600: '#9333ea' }
-orange: { 50: '#fff7ed', 500: '#f97316', 600: '#ea580c' }
-teal: { 50: '#f0fdfa', 500: '#14b8a6', 600: '#0d9488' }
-```
-
-### Sidebar Navigation
-The sidebar includes these navigation items:
-- **Dashboard** - Overview and statistics
-- **Applications** - Job applications list
-- **Companies** - Company management
-- **Calendar** - Interview scheduling
-- **Analytics** - Progress tracking
-- **Documents** - Resume and cover letter storage
-- **Contacts** - Network management
-- **Quick Actions** - Common tasks
-
-## 📱 Responsive Design
-
-The application is fully responsive and works on:
-- **Desktop** - Full sidebar with expanded navigation
-- **Tablet** - Collapsible sidebar with touch-friendly interface
-- **Mobile** - Mobile-optimized layout with bottom navigation
-
-## 🔐 Authentication
-
-### OAuth Providers
-- **Google** - Sign in with Google account
-- **GitHub** - Sign in with GitHub account
-
-### User Management
-- Automatic user creation on first sign-in
-- Session management with JWT tokens
-- Secure password handling
-
-## 🗄️ Database Schema
-
-The application uses a well-structured database schema:
-
-```sql
--- Users table for authentication
-users (id, email, name, image, created_at)
-
--- Companies table for organization tracking
-companies (id, name, website, industry, created_at)
-
--- Job applications with full tracking
-job_applications (id, user_id, company_id, position, status, priority, ...)
-
--- Application events for timeline tracking
-application_events (id, application_id, event_type, description, date)
-```
-
-## 🚀 Deployment
-
-### Vercel (Recommended)
-1. Push your code to GitHub
-2. Connect your repository to Vercel
-3. Add environment variables in Vercel dashboard
-4. Deploy automatically on every push
-
-### Other Platforms
-The application can be deployed to any platform that supports Next.js:
-- Netlify
-- Railway
-- DigitalOcean App Platform
-- AWS Amplify
-
-## 🧪 Development
-
-### Available Scripts
 ```bash
-pnpm dev          # Start development server
-pnpm build        # Build for production
-pnpm start        # Start production server
-pnpm lint         # Run ESLint
-pnpm db:generate  # Generate database migrations
-pnpm db:push      # Push schema to database
-pnpm db:studio    # Open Drizzle Studio
+git clone git@github.com:afrotomation/codeniwork.git
+cd codeniwork
+bun install
+cp env.example .env.local   # fill in DATABASE_URL and NEXTAUTH_SECRET
+bun run db:push
+bun run dev
 ```
 
-### Code Structure
+Then open [localhost:3000](http://localhost:3000).
+
+### Environment
+
+Only two variables are needed to boot:
+
+| Variable | Notes |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `NEXTAUTH_SECRET` | `openssl rand -base64 32` |
+| `NEXTAUTH_URL` | Defaults to the request origin; set it behind a proxy |
+
+Optional: `CLOUDINARY_*` for document and image uploads, `AI_ENDPOINT` / `AI_API_KEY` / `AI_MODEL` for the AI tools, `NEXT_PUBLIC_ANALYTICS_*` for telemetry, `CRON_SECRET` to authenticate the auto-reject cron.
+
+`env.example` still lists `GITHUB_*` and `GOOGLE_*` under OAuth. No OAuth provider is registered in `lib/auth.ts` today — sign-in is credentials and passkeys — so those are reserved, not required.
+
+## Scripts
+
+```bash
+bun run dev          # Development server
+bun run build        # Production build
+bun run lint         # ESLint
+bun run db:generate  # Generate migrations from the schema
+bun run db:push      # Push the schema to the database
+bun run db:studio    # Drizzle Studio
+bun run db:seed      # Seed sample data
+bun run auto-reject  # Close applications silent past the window
 ```
-├── app/                    # Next.js App Router
-│   ├── api/               # API routes
-│   ├── auth/              # Authentication pages
-│   └── globals.css        # Global styles
-├── components/             # React components
-│   ├── ui/                # shadcn/ui components
-│   ├── dashboard/         # Dashboard components
-│   └── providers/         # Context providers
-├── lib/                   # Utility functions
-│   ├── db/                # Database configuration
-│   ├── auth.ts            # Authentication config
-│   └── utils.ts           # Helper functions
-└── hooks/                 # Custom React hooks
+
+## Layout
+
+```
+app/
+  api/          Route handlers; each checks the session itself
+  auth/         Sign in and sign up
+  dashboard/    The eleven console screens
+components/
+  dashboard/    Screen-level pieces, tables, dialogs
+  ui/           Primitives — button, badge, dialog, sidebar
+lib/
+  applications.ts  Pipeline derivations: next step, action queue, stats, calendar
+  job-match.ts     Resume-to-listing scoring
+  db/              Drizzle schema and queries
+  auth.ts          NextAuth configuration
+hooks/            useApplications, useTheme, usePasskeyAuth
+proxy.ts          Route guard
 ```
 
-## 🤝 Contributing
+Every projection on a screen is derived from one read of the pipeline, so the counts on the strip, the queue and the table cannot disagree.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+## Deployment
 
-## 📄 License
+Built as a Docker image (`output: 'standalone'`, `node:22-alpine`) and deployed to Coolify, which redeploys on push to `master`. A health check is served at `/api/health`.
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Releases are cut by semantic-release from conventional commits on push to `master` — `feat` minor, `fix`/`perf`/`refactor` patch, `BREAKING CHANGE` major.
 
-## 🙏 Acknowledgments
+## Contributing
 
-- **Clean My Mac** - Design inspiration for the colorful interface
-- **shadcn/ui** - Beautiful UI component library
-- **Next.js Team** - Amazing React framework
-- **Drizzle Team** - Type-safe database ORM
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/); commitlint enforces this. Branch, commit, and open a pull request against `master`.
 
-## 🆘 Support
+## License
 
-If you encounter any issues or have questions:
-
-1. Check the [Issues](../../issues) page for existing solutions
-2. Create a new issue with detailed information
-3. Join our community discussions
+MIT — see [LICENSE](LICENSE).
 
 ---
 
-**Built with ❤️ by [CodeniWork](https://tioye.dev) using Next.js 15.5 and modern web technologies**
+Built by [CodenificienT](https://tioye.dev)
